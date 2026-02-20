@@ -614,45 +614,18 @@ function render() {
     });
   }
 
-  // ── Ground (matches game: topFrame for groundRow, fillFrame below) ──
+  // ── Ground (full-depth 9-slice, matches game) ──
   if (LAYERS.ground.on) {
-    const tk = LD.groundTerrainKey;
-    const topFr  = LD.groundTopFrame  ?? 1;
-    const fillFr = LD.groundFillFrame ?? 7;
+    const groundH = ROWS - LD.groundRow;
     (LD.ground||[]).forEach(([startCol, w]) => {
-      for (let dx = 0; dx < w; dx++) {
-        const c = startCol + dx;
-        if (c < visC0 || c > visC1) continue;
-        // Top row
-        if (LD.groundRow >= visR0 && LD.groundRow <= visR1) {
-          const [sx, sy] = worldToScreen(c, LD.groundRow);
-          if (!drawTerrainFrame(tk, topFr, sx, sy, t, t)) { ctx.fillStyle='#5a8a3a'; ctx.fillRect(sx,sy,t,t); }
-        }
-        // Fill rows below (to world bottom)
-        for (let r = LD.groundRow + 1; r < ROWS; r++) {
-          if (r < visR0 || r > visR1) continue;
-          const [sx, sy] = worldToScreen(c, r);
-          if (!drawTerrainFrame(tk, fillFr, sx, sy, t, t)) { ctx.fillStyle='#4a3820'; ctx.fillRect(sx,sy,t,t); }
-        }
-      }
+      renderBlock(startCol, LD.groundRow, w, groundH, LD.groundTerrainKey);
     });
   }
 
-  // ── Platforms (matches game: each entry = one row, its exact frame) ──
+  // ── Platforms (grouped into logical blocks with 9-slice, matches game) ──
   if (LAYERS.platf.on) {
-    (LD.platforms||[]).forEach(([col, row, w, terrainKey, frame]) => {
-      if (row < visR0 || row > visR1) return;
-      const tk = terrainKey || LD.groundTerrainKey;
-      const fr = frame ?? (LD.groundTopFrame ?? 1);
-      for (let dx = 0; dx < w; dx++) {
-        const c = col + dx;
-        if (c < visC0 || c > visC1) continue;
-        const [sx, sy] = worldToScreen(c, row);
-        if (!drawTerrainFrame(tk, fr, sx, sy, t, t)) {
-          ctx.fillStyle = (fr === (LD.groundTopFrame ?? 1)) ? '#7aaa3a' : '#5a4020';
-          ctx.fillRect(sx, sy, t, t);
-        }
-      }
+    platformBlocks.forEach(({ col, topRow, w, h, terrainKey }) => {
+      renderBlock(col, topRow, w, h, terrainKey);
     });
   }
 
@@ -1086,8 +1059,8 @@ function exportReport() {
 
 function buildLegend() {
   const items = [
-    ['#5a8a3a','Ground surface (topFrame)'],
-    ['#4a3820','Ground fill (fillFrame)'],
+    ['#5a8a3a','Ground surface (9-slice top)'],
+    ['#4a3820','Ground fill (9-slice fill)'],
     ['#7aaa3a','Platform surface'],
     ['#5a4020','Platform fill'],
     ['#3a8aaa','Moving platform'],

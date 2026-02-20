@@ -185,31 +185,79 @@ class GameScene extends Phaser.Scene {
         return this.platforms.create(x, y, texKey, frame);
     }
 
-    _tileRow(startCol, row, count, frame = 1) {
-        for (let c = 0; c < count; c++) this._tile(startCol + c, row, frame);
+    // 9-slice frame for Palm Tree Island 'terrain' (17-col spritesheet)
+    _get9SliceFrame(dx, dy, w, h) {
+        const F = { TL:0, TC:1, TR:2, ML:17, MC:18, MR:19, BL:34, BC:35, BR:36 };
+        const L = dx === 0, R = dx === w - 1, T = dy === 0, B = dy === h - 1;
+        if (w === 1 && h === 1) return F.TC;
+        if (w === 1) return T ? F.TC : B ? F.BC : F.MC;
+        if (h === 1) return L ? F.TL : R ? F.TR : F.TC;
+        if (T && L) return F.TL; if (T && R) return F.TR; if (T) return F.TC;
+        if (B && L) return F.BL; if (B && R) return F.BR; if (B) return F.BC;
+        if (L) return F.ML; if (R) return F.MR;
+        return F.MC;
     }
 
-    _tileRowKey(startCol, row, count, frame = 1, texKey = 'terrain') {
-        for (let c = 0; c < count; c++) this._tile(startCol + c, row, frame, texKey);
+    // Render a w×h block using 9-slice (terrain key) or simple top/fill (others)
+    _buildBlock(col, topRow, w, h, texKey) {
+        const LD = this._levelData;
+        for (let dy = 0; dy < h; dy++) {
+            for (let dx = 0; dx < w; dx++) {
+                let frame;
+                if (texKey === 'terrain') {
+                    frame = this._get9SliceFrame(dx, dy, w, h);
+                } else if (texKey === 'pirate-platform') {
+                    frame = 0;
+                } else {
+                    frame = dy === 0 ? (LD.groundTopFrame ?? 0) : (LD.groundFillFrame ?? 1);
+                }
+                this._tile(col + dx, topRow + dy, frame, texKey);
+            }
+        }
     }
 
     createLevel() {
         const LD        = this._levelData;
         const groundRow = LD.groundRow;
         const groundKey = LD.groundTerrainKey || 'terrain';
-        const topFrame  = LD.groundTopFrame  ?? 1;
-        const fillFrame = LD.groundFillFrame ?? 7;
+        const worldRows = Math.ceil(LD.worldH / GAME.TILE);
 
         this.platforms = this.physics.add.staticGroup();
 
+        // Ground — full depth from groundRow to world bottom, 9-slice
+        const groundH = worldRows - groundRow;
         LD.ground.forEach(([col, w]) => {
-            this._tileRowKey(col, groundRow,     w, topFrame,  groundKey);
-            this._tileRowKey(col, groundRow + 1, w, fillFrame, groundKey);
+            this._buildBlock(col, groundRow, w, groundH, groundKey);
         });
 
-        LD.platforms.forEach(([col, row, w, key, fr]) => {
-            this._tileRowKey(col, row, w, fr ?? 1, key || groundKey);
-        });
+        // Platforms — group consecutive rows into logical blocks, then 9-slice
+        if (groundKey === 'terrain') {
+            // Group per (col, w, key) into consecutive-row blocks
+            const groups = new Map();
+            LD.platforms.forEach(([col, row, w, key]) => {
+                const tk = key || groundKey;
+                const k  = `${col},${w},${tk}`;
+                if (!groups.has(k)) groups.set(k, { col, w, tk, rows: [] });
+                groups.get(k).rows.push(row);
+            });
+            groups.forEach(({ col, w, tk, rows }) => {
+                rows.sort((a, b) => a - b);
+                let start = rows[0], prev = rows[0];
+                for (let i = 1; i <= rows.length; i++) {
+                    if (i === rows.length || rows[i] !== prev + 1) {
+                        this._buildBlock(col, start, w, prev - start + 1, tk);
+                        if (i < rows.length) { start = rows[i]; prev = rows[i]; }
+                    } else { prev = rows[i]; }
+                }
+            });
+        } else {
+            // Non-terrain levels (pirate): use explicit frames as-is
+            LD.platforms.forEach(([col, row, w, key, fr]) => {
+                const tk = key || groundKey;
+                const frame = fr ?? (LD.groundTopFrame ?? 1);
+                for (let dx = 0; dx < w; dx++) this._tile(col + dx, row, frame, tk);
+            });
+        }
 
         this._movingPlatforms = [];
         if (LD.movingPlatforms) {
