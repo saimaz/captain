@@ -393,42 +393,9 @@ const Level1Data = Object.freeze({
 
     // ── Cannons ────────────────────────────────────────────────
     // [col, row, 'left'|'right']
-    cannons: [
-        // Water gap guardians (far side, firing left)
-        [58,  34, 'left'],              // Shore → Jungle gap
-        [114, 34, 'left'],              // Jungle → Tidal Pools gap
-        [171, 34, 'left'],              // Tidal Pools → Ancient Ruins gap
-        [226, 34, 'left'],              // Ancient Ruins → Cliff Face gap
-        [281, 34, 'left'],              // Cliff Face → Storm Ridge gap
-        [331, 34, 'left'],              // Storm Ridge → The Lookout gap
-        // In-zone cannons
-        [145, 33, 'right'],             // Zone 3 – Tidal Pools
-        [208, 33, 'left'],              // Zone 4 – Ancient Ruins
-        [310, 33, 'right'],             // Zone 6 – Storm Ridge
-    ],
+    cannons: [],
 
-    // ── Shooter traps ──────────────────────────────────────────
-    // [col, row, type, 'left'|'right']
-    // type: 'seashell' | 'totem1' | 'totem2' | 'totem3'
-    traps: [
-        [27,  34, 'seashell', 'right'],  // Zone 1 – shore ambush
-        [46,  34, 'totem1',   'right'],  // Zone 1 – second trap
-        [92,  34, 'seashell', 'left'],   // Zone 2 – jungle
-        [106, 31, 'totem2',   'left'],   // Zone 2 – elevated
-        [130, 34, 'totem1',   'right'],  // Zone 3 – tidal pools
-        [152, 34, 'seashell', 'left'],   // Zone 3
-        [176, 34, 'totem3',   'right'],  // Zone 4 – ruins
-        [205, 34, 'seashell', 'left'],   // Zone 4
-        [218, 32, 'totem2',   'right'],  // Zone 4 – elevated
-        [231, 34, 'totem1',   'right'],  // Zone 5 – cliff base
-        [250, 34, 'seashell', 'left'],   // Zone 5
-        [264, 33, 'totem3',   'left'],   // Zone 5 – near staircase top
-        [285, 34, 'seashell', 'right'],  // Zone 6 – storm ridge
-        [297, 34, 'totem2',   'left'],   // Zone 6
-        [317, 30, 'seashell', 'right'],  // Zone 6 – elevated
-        [325, 34, 'totem1',   'left'],   // Zone 6 – final stretch
-        [340, 32, 'totem3',   'right'],  // Zone 7 – lookout
-    ],
+    traps: [],
 
     // ── Goals ────────────────────────────────────────────────
     chestCol: 347, chestRow: 28,

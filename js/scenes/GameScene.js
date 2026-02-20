@@ -32,7 +32,6 @@ class GameScene extends Phaser.Scene {
         const LD        = this._levelData;
 
         this.physics.world.setBounds(0, 0, LD.worldW, LD.worldH);
-        this.physics.world.gravity.y = 0;
         this.cameras.main.setBounds(0, 0, LD.worldW, LD.worldH);
 
         this.createBackground();

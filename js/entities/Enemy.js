@@ -28,7 +28,7 @@ class Enemy {
 
         this.sprite = scene.physics.add.sprite(x, y, type + '-idle-1');
         this.sprite.setSize(40, 28).setOffset(16, 2);
-        this.sprite.setGravityY(GAME.GRAVITY + 400);
+        this.sprite.setGravityY(400); // world gravity (900) + 400 extra = 1300 total
         this.sprite.setCollideWorldBounds(false);
         this.sprite.setDepth(9);
         this.sprite.play(type + '-run', true);

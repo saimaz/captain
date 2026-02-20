@@ -7,7 +7,7 @@ const config = {
     physics: {
         default: 'arcade',
         arcade: {
-            gravity: { y: 0 },  // per-body gravity set manually in each scene
+            gravity: { y: 900 },
             debug: false
         }
     },
