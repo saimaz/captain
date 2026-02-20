@@ -20,7 +20,9 @@
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(ls:*)",
       "mcp__browsermcp__browser_navigate",
-      "mcp__browsermcp__browser_screenshot"
+      "mcp__browsermcp__browser_screenshot",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs"
     ]
   }
 }

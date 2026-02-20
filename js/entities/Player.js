@@ -18,7 +18,7 @@ class Player {
 
         // Sprite
         this.sprite = scene.physics.add.sprite(x, y, 'player-idle-1');
-        this.sprite.setSize(32, 34).setOffset(16, 5);
+        this.sprite.setSize(32, 26).setOffset(16, 6);
         this.sprite.setCollideWorldBounds(true);
         // World gravity (900) handles falling; no per-body override needed
         this.sprite.setDepth(10);

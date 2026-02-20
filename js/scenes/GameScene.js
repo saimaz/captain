@@ -17,6 +17,12 @@ class GameScene extends Phaser.Scene {
         this._music           = null;
         this._paused          = false;
         this._levelData       = null;
+
+        // Visual layers
+        this.bgLayer        = null;
+        this._bigCloudsBack  = null;
+        this._bigCloudsFront = null;
+        this._smallClouds    = [];
     }
 
     create() {
@@ -120,11 +126,43 @@ class GameScene extends Phaser.Scene {
                 .setScrollFactor(0).setDepth(-17);
         }
 
-        if (V.hasClouds && V.cloudPositions && V.cloudPositions.length > 0) {
-            const cloudKeys = ['cloud-1', 'cloud-2', 'cloud-3', 'cloud-big'];
-            V.cloudPositions.forEach(([wx, wy, ki]) => {
-                this.add.image(wx, wy, cloudKeys[ki]).setScrollFactor(0.06).setDepth(-18).setScale(1.2);
-            });
+        // Setup Clouds
+        this._smallClouds = [];
+        this._bigCloudsBack = null;
+        this._bigCloudsFront = null;
+
+        if (V.hasClouds) {
+            const cloudKeys = ['cloud-1', 'cloud-2', 'cloud-3'];
+            const vis = GAME.VISUALS || {};
+            const bigCloudY = vis.BIG_CLOUD_Y || 100;
+
+            // Layer 1: Big Clouds Back (Slower, smaller)
+            this._bigCloudsBack = this.add.tileSprite(W/2, bigCloudY - 20, W, 128, 'cloud-big')
+                .setScrollFactor(0).setDepth(-18).setScale(1.2, 0.8).setAlpha(0.5);
+
+            // Layer 2: Big Clouds Front (Faster, larger)
+            this._bigCloudsFront = this.add.tileSprite(W/2, bigCloudY + 20, W, 128, 'cloud-big')
+                .setScrollFactor(0).setDepth(-18).setScale(1.8, 1.2).setAlpha(0.8);
+
+            // Small individual clouds
+            if (V.cloudPositions && V.cloudPositions.length > 0) {
+                const driftMin = vis.CLOUD_DRIFT_MIN || 0.1;
+                const driftMax = vis.CLOUD_DRIFT_MAX || 0.3;
+
+                V.cloudPositions.forEach(([wx, wy, ki]) => {
+                    if (ki < 3) {
+                        const cloud = this.add.image(wx % W, wy, cloudKeys[ki])
+                            .setScrollFactor(0).setDepth(-18).setScale(Phaser.Math.FloatBetween(0.8, 1.4))
+                            .setAlpha(Phaser.Math.FloatBetween(0.6, 0.9));
+                        
+                        this._smallClouds.push({
+                            sprite: cloud,
+                            speed: driftMin + Math.random() * (driftMax - driftMin),
+                            parallaxFactor: Phaser.Math.FloatBetween(0.02, 0.08)
+                        });
+                    }
+                });
+            }
         }
 
         if (V.hasWaterPits && LD.waterPits && LD.waterPits.length > 0) {
@@ -263,22 +301,31 @@ class GameScene extends Phaser.Scene {
         if (LD.movingPlatforms) {
             LD.movingPlatforms.forEach(mp => {
                 const tiles = [];
+                const isVertical = mp.axis === 'y';
+                const startX = mp.col * GAME.TILE + 16;
+                const startY = mp.row * GAME.TILE + 16;
+
                 for (let i = 0; i < mp.width; i++) {
                     const t = this.physics.add.staticImage(
-                        mp.col * GAME.TILE + i * GAME.TILE + 16,
-                        mp.row * GAME.TILE + 16,
+                        startX + i * GAME.TILE,
+                        startY,
                         mp.terrainKey || groundKey
                     ).setFrame(mp.frame ?? 1);
                     this.platforms.add(t);
                     tiles.push(t);
                 }
+                
                 this._movingPlatforms.push({
                     tiles,
+                    axis:     mp.axis || 'x',
                     rangeMin: mp.rangeMin,
                     rangeMax: mp.rangeMax,
                     speed:    mp.speed,
-                    _pos:     mp.col * GAME.TILE,
+                    type:     mp.type || 'linear',
+                    _pos:     isVertical ? startY : startX,
+                    _start:   isVertical ? startY : startX, // remember start for floating
                     _vel:     mp.speed,
+                    _time:    Math.random() * 100 // random offset for floating
                 });
             });
         }
@@ -399,7 +446,7 @@ class GameScene extends Phaser.Scene {
         this.allCannonballs = this.physics.add.group();
 
         LD.spikes.forEach(([col, row]) => {
-            const s = this.spikes.create(col * GAME.TILE + 16, row * GAME.TILE + 12, 'spikes');
+            const s = this.spikes.create(col * GAME.TILE + 16, row * GAME.TILE + 16, 'spikes');
             s.setSize(28, 14).setOffset(2, 10).refreshBody();
         });
 
@@ -651,13 +698,26 @@ class GameScene extends Phaser.Scene {
 
         if (this._movingPlatforms && this._movingPlatforms.length > 0) {
             this._movingPlatforms.forEach(mp => {
-                mp._pos += mp._vel * (delta / 1000);
-                if (mp._pos >= mp.rangeMax || mp._pos <= mp.rangeMin) {
-                    mp._vel *= -1;
-                    mp._pos = Phaser.Math.Clamp(mp._pos, mp.rangeMin, mp.rangeMax);
+                if (mp.type === 'floating') {
+                    // Floating behavior: Sine wave motion around _start position
+                    mp._time += delta * 0.003;
+                    const offset = Math.sin(mp._time) * (mp.rangeMax || 20); // rangeMax acts as amplitude
+                    mp._pos = mp._start + offset;
+                } else {
+                    // Linear behavior: Move back and forth
+                    mp._pos += mp._vel * (delta / 1000);
+                    if (mp._pos >= mp.rangeMax || mp._pos <= mp.rangeMin) {
+                        mp._vel *= -1;
+                        mp._pos = Phaser.Math.Clamp(mp._pos, Math.min(mp.rangeMin, mp.rangeMax), Math.max(mp.rangeMin, mp.rangeMax));
+                    }
                 }
+
+                // Update tile positions
+                const isVertical = mp.axis === 'y';
                 mp.tiles.forEach((tile, i) => {
-                    tile.body.reset(mp._pos + i * GAME.TILE + 16, tile.y);
+                    const newX = isVertical ? tile.x : (mp._pos + i * GAME.TILE);
+                    const newY = isVertical ? (mp._pos + i * GAME.TILE) : tile.y;
+                    tile.body.reset(newX, newY);
                 });
             });
         }
@@ -667,6 +727,37 @@ class GameScene extends Phaser.Scene {
                 ? (this._levelData.visual.bgScrollRate || 0.2)
                 : 0.2;
             this.bgLayer.tilePositionX = this.cameras.main.scrollX * scrollRate;
+        }
+
+        // Auto-drift and Parallax clouds
+        const camX = this.cameras.main.scrollX;
+        const vis  = GAME.VISUALS || {};
+        const baseBigSpeed = vis.BIG_CLOUD_SPEED || 0.2;
+
+        if (this._bigCloudsBack) {
+            // Very slow parallax + slow drift
+            this._bigCloudsBack.tilePositionX = (camX * 0.05) + (time * 0.01);
+        }
+
+        if (this._bigCloudsFront) {
+            // Medium parallax + faster drift
+            this._bigCloudsFront.tilePositionX = (camX * 0.12) + (time * 0.02);
+        }
+
+        if (this._smallClouds && this._smallClouds.length > 0) {
+            const W = GAME.CANVAS_W;
+            this._smallClouds.forEach(c => {
+                // Drift horizontally
+                c.sprite.x += c.speed;
+                
+                // Add a slight parallax shift to their base position
+                // We don't change x directly with camera because we want them to loop
+                // So we just let them drift. For individual sprites, drift is usually enough.
+                
+                // Wrap around screen
+                if (c.sprite.x > W + 150) c.sprite.x = -150;
+                if (c.sprite.x < -150) c.sprite.x = W + 150;
+            });
         }
     }
 

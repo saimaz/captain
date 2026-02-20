@@ -49,4 +49,13 @@ const GAME = Object.freeze({
         STOMP:   100,
         SWORD:    75,
     },
+
+    VISUALS: {
+        CLOUD_Y_MIN: 40,
+        CLOUD_Y_MAX: 160,
+        BIG_CLOUD_Y: 100,
+        CLOUD_DRIFT_MIN: 0.1,
+        CLOUD_DRIFT_MAX: 0.3,
+        BIG_CLOUD_SPEED: 0.2,
+    },
 });
