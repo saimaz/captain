@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Level Debug Viewer</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: 'Courier New', monospace; overflow: hidden; }
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+#toolbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px 10px; background: #0a0a14; border-bottom: 1px solid #1e1e30;
+  flex-shrink: 0;
+}
+#toolbar h1 { font-size: 12px; color: #f0a030; white-space: nowrap; }
+.tb-sep { width: 1px; height: 16px; background: #222; flex-shrink: 0; }
+.tb-label { font-size: 10px; color: #555; }
+#zoom-val { font-size: 10px; color: #8cf; min-width: 36px; }
+button {
+  padding: 2px 7px; font-size: 10px; font-family: inherit;
+  background: #161624; border: 1px solid #2e2e44; color: #999;
+  cursor: pointer; border-radius: 3px; white-space: nowrap;
+}
+button:hover { background: #22223a; }
+button.active { background: #12284a; border-color: #2e70b0; color: #8cf; }
+.lv-btn.active { background: #122a12; border-color: #2e7030; color: #8f8; }
+#layer-toggles { display: flex; gap: 3px; flex-wrap: wrap; }
+
+#main { display: flex; flex: 1; overflow: hidden; }
+#canvas-wrap { flex: 1; overflow: hidden; cursor: crosshair; }
+canvas { display: block; }
+
+/* ── Info panel ── */
+#info-panel {
+  width: 268px; background: #0a0a14; border-left: 1px solid #1e1e30;
+  display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; font-size: 11px;
+}
+#sel-section { flex-shrink: 0; background: #0c1820; border-bottom: 2px solid #1e4a70; padding: 8px; }
+#sel-section h2 { font-size: 11px; color: #4af; margin-bottom: 5px; border-bottom: 1px solid #1a2e42; padding-bottom: 3px; display: flex; justify-content: space-between; }
+#sel-section h2 .hint { font-size: 9px; color: #234; font-weight: normal; }
+#sel-empty { color: #234; font-size: 10px; padding: 3px 0; }
+#sel-coords { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 4px; }
+.sc { background: #0a1824; border-radius: 2px; padding: 2px 4px; }
+.sc .sk { color: #346; font-size: 9px; display: block; }
+.sc .sv { color: #6cf; font-size: 12px; font-weight: bold; }
+#sel-zone { font-size: 9px; color: #6af; background: #0a1a2c; padding: 2px 5px; border-radius: 2px; margin-bottom: 4px; border-left: 2px solid #2af; }
+#sel-things { margin-bottom: 4px; max-height: 120px; overflow-y: auto; }
+.info-item { padding: 2px 4px; margin: 1px 0; border-radius: 2px; border-left: 3px solid; font-size: 10px; line-height: 1.35; }
+.copy-btn {
+  display: block; width: 100%; padding: 5px; font-size: 11px; font-weight: bold;
+  background: #081830; border: 1px solid #1a5090; color: #4af; cursor: pointer;
+  border-radius: 3px; font-family: inherit;
+}
+.copy-btn:hover { background: #102040; border-color: #3af; }
+.copy-btn.ok { background: #082820; border-color: #1a6030; color: #4f8; }
+
+#hover-section { flex: 1; overflow-y: auto; padding: 6px 8px; }
+#hover-section h2 { font-size: 10px; color: #f0a030; margin-bottom: 4px; border-bottom: 1px solid #1a1a2a; padding-bottom: 2px; }
+.irow { display: flex; justify-content: space-between; padding: 1px 0; border-bottom: 1px solid #0f0f18; }
+.ik { color: #445; font-size: 10px; }
+.iv { color: #8cf; font-size: 10px; text-align: right; }
+.info-section h3 { font-size: 9px; color: #778; margin: 5px 0 2px; }
+
+#leg-section { flex-shrink: 0; padding: 6px 8px; border-top: 1px solid #161620; max-height: 150px; overflow-y: auto; }
+#leg-section h2 { font-size: 10px; color: #f0a030; margin-bottom: 3px; }
+.leg-row { display: flex; align-items: center; gap: 4px; margin: 1px 0; font-size: 9px; color: #778; }
+.leg-sw { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+
+#statusbar { padding: 2px 10px; background: #0a0a14; border-top: 1px solid #161620; font-size: 9px; color: #334; display: flex; gap: 14px; flex-shrink: 0; }
+#statusbar span { color: #667; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <h1>Debug Viewer</h1>
+    <div class="tb-sep"></div>
+    <span class="tb-label">Level:</span>
+    <button class="lv-btn active" id="lv1" onclick="switchLevel(1)">Level 1</button>
+    <button class="lv-btn"        id="lv2" onclick="switchLevel(2)">Level 2</button>
+    <button class="lv-btn"        id="lv3" onclick="switchLevel(3)">Level 3</button>
+    <div class="tb-sep"></div>
+    <span class="tb-label">Zoom:</span>
+    <button onclick="setZoom(zoom*1.5)">+</button>
+    <span id="zoom-val">—</span>
+    <button onclick="setZoom(zoom/1.5)">−</button>
+    <button onclick="resetView()">Fit</button>
+    <div class="tb-sep"></div>
+    <span class="tb-label">Layers:</span>
+    <div id="layer-toggles"></div>
+    <div class="tb-sep"></div>
+    <button onclick="exportReport()">Export</button>
+    <span class="tb-label" id="sprite-status" style="color:#334">⏳…</span>
+  </div>
+
+  <div id="main">
+    <div id="canvas-wrap"><canvas id="cv"></canvas></div>
+    <div id="info-panel">
+      <div id="sel-section">
+        <h2>Selected Tile <span class="hint">click map to select</span></h2>
+        <div id="sel-empty">No tile selected</div>
+        <div id="sel-content" style="display:none">
+          <div id="sel-coords">
+            <div class="sc"><span class="sk">col</span><span class="sv" id="sc-col">—</span></div>
+            <div class="sc"><span class="sk">row</span><span class="sv" id="sc-row">—</span></div>
+            <div class="sc"><span class="sk">worldX</span><span class="sv" id="sc-wx">—</span></div>
+            <div class="sc"><span class="sk">worldY</span><span class="sv" id="sc-wy">—</span></div>
+          </div>
+          <div id="sel-zone"></div>
+          <div id="sel-things"></div>
+          <button class="copy-btn" id="copy-btn" onclick="copySelected()">📋 Copy for Claude</button>
+        </div>
+      </div>
+      <div id="hover-section">
+        <h2>Hover</h2>
+        <div class="irow"><span class="ik">col</span><span class="iv" id="hi-col">—</span></div>
+        <div class="irow"><span class="ik">row</span><span class="iv" id="hi-row">—</span></div>
+        <div class="irow"><span class="ik">worldX</span><span class="iv" id="hi-wx">—</span></div>
+        <div class="irow"><span class="ik">worldY</span><span class="iv" id="hi-wy">—</span></div>
+        <div class="irow"><span class="ik">zone</span><span class="iv" id="hi-zone">—</span></div>
+        <div id="hover-things" class="info-section"></div>
+      </div>
+      <div id="leg-section">
+        <h2>Legend</h2><div id="leg-items"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <div>Mouse: <span id="sb-mouse">—</span></div>
+    <div>Pan: <span id="sb-pan">—</span></div>
+    <div>World: <span id="sb-world">—</span></div>
+    <div>Drag to pan · Scroll to zoom · Click to select</div>
+  </div>
+</div>
+
+<script src="js/constants.js"></script>
+<script src="js/levels/Level1Data.js"></script>
+<script src="js/levels/Level2Data.js"></script>
+<script src="js/levels/Level3Data.js"></script>
+<script>
+'use strict';
+
+const TILE = GAME.TILE; // 32
+
+// ── 9-slice frame constants (Palm Tree Island terrain, 17-col sheet) ──────────
+const F9 = { TL:0, TC:1, TR:2, ML:17, MC:18, MR:19, BL:34, BC:35, BR:36 };
+
+function get9SliceFrame(dx, dy, w, h) {
+  const L = dx === 0, R = dx === w-1, T = dy === 0, B = dy === h-1;
+  if (w === 1 && h === 1) return F9.TC;
+  if (w === 1) return T ? F9.TC : B ? F9.BC : F9.MC;
+  if (h === 1) return L ? F9.TL : R ? F9.TR : F9.TC;
+  if (T && L) return F9.TL; if (T && R) return F9.TR; if (T) return F9.TC;
+  if (B && L) return F9.BL; if (B && R) return F9.BR; if (B) return F9.BC;
+  if (L)      return F9.ML; if (R)      return F9.MR;
+  return F9.MC;
+}
+
+// ── Image loader ──────────────────────────────────────────────────────────────
+
+const IMG = {};
+let spritesLoaded = 0, spritesTotal = 0;
+
+function loadImg(key, src) {
+  spritesTotal++;
+  const img = new Image();
+  img.onload  = () => { IMG[key] = img; spritesLoaded++; onSpriteLoad(); };
+  img.onerror = () => { spritesLoaded++; onSpriteLoad(); };
+  img.src = src;
+}
+
+function onSpriteLoad() {
+  const el = document.getElementById('sprite-status');
+  if (spritesLoaded >= spritesTotal) { el.textContent = '✓'; el.style.color = '#3a8'; }
+  else { el.textContent = `⏳${spritesLoaded}/${spritesTotal}`; }
+  render();
+}
+
+// Terrain spritesheets (17-col and 19-col)
+loadImg('terrain',         'asset/Palm Tree Island/Sprites/Terrain/Terrain (32x32).png');
+loadImg('pirate-terrain',  'asset/Pirate Ship/Sprites/Tilesets/Terrain and Back Wall (32x32).png');
+loadImg('pirate-platform', 'asset/Pirate Ship/Sprites/Tilesets/Platforms (32x32).png');
+// Backgrounds
+loadImg('bg-main',  'asset/Palm Tree Island/Sprites/Background/BG Image.png');
+loadImg('bg-water', 'asset/Palm Tree Island/Sprites/Background/Additional Water.png');
+// Clouds
+loadImg('cloud-big', 'asset/Palm Tree Island/Sprites/Background/Big Clouds.png');
+loadImg('cloud-1',   'asset/Palm Tree Island/Sprites/Background/Small Cloud 1.png');
+loadImg('cloud-2',   'asset/Palm Tree Island/Sprites/Background/Small Cloud 2.png');
+loadImg('cloud-3',   'asset/Palm Tree Island/Sprites/Background/Small Cloud 3.png');
+// Collectibles
+loadImg('coin',    'asset/Pirate Treasure/Sprites/Gold Coin/01.png');
+loadImg('diamond', 'asset/Pirate Treasure/Sprites/Blue Diamond/01.png');
+loadImg('potion',  'asset/Pirate Treasure/Sprites/Red Potion/01.png');
+loadImg('derila',  'asset/derila-game.png');
+loadImg('matsato', 'asset/matsato-game.png');
+loadImg('sinoshi', 'asset/sinoshi-game.png');
+loadImg('ryoko',   'asset/ryoko-game.png');
+loadImg('chest',   'asset/Palm Tree Island/Sprites/Objects/Chest/Chest Close 01.png');
+// Environment
+loadImg('spikes',  'asset/Palm Tree Island/Sprites/Objects/Spikes/Spikes.png');
+loadImg('cannon',   'asset/Shooter Traps/Sprites/Cannon/Cannon Idle/1.png');
+loadImg('seashell', 'asset/Shooter Traps/Sprites/Seashell/Seashell Idle/1.png');
+loadImg('totem1',   'asset/Shooter Traps/Sprites/Totems/Head 1/Idle 1/1.png');
+loadImg('totem2',   'asset/Shooter Traps/Sprites/Totems/Head 2/Idle 1/1.png');
+loadImg('totem3',   'asset/Shooter Traps/Sprites/Totems/Head 3/Idle 1/1.png');
+loadImg('door',    'asset/Pirate Ship/Sprites/Decorations/Door/Closing/01.png');
+// Characters
+loadImg('player', 'asset/Captain Clown Nose/Sprites/Captain Clown Nose/Captain Clown Nose without Sword/01-Idle/Idle 01.png');
+loadImg('crabby', 'asset/The Crusty Crew/Sprites/Crabby/01-Idle/Idle 01.png');
+loadImg('fierce', 'asset/The Crusty Crew/Sprites/Fierce Tooth/01-Idle/Idle 01.png');
+loadImg('pink',   'asset/The Crusty Crew/Sprites/Pink Star/01-Idle/Idle 01.png');
+// Palms
+loadImg('front-palm', 'asset/Palm Tree Island/Sprites/Front Palm Trees/Front Palm Tree Top 01.png');
+loadImg('back-palm-left',    'asset/Palm Tree Island/Sprites/Back Palm Trees/Back Palm Tree Left 01.png');
+loadImg('back-palm-regular', 'asset/Palm Tree Island/Sprites/Back Palm Trees/Back Palm Tree Regular 01.png');
+loadImg('back-palm-right',   'asset/Palm Tree Island/Sprites/Back Palm Trees/Back Palm Tree Right 01.png');
+
+// Spritesheet column counts for frame extraction
+const SHEET_COLS = { 'terrain': 17, 'pirate-terrain': 19, 'pirate-platform': 8 };
+
+function drawTerrainFrame(sheetKey, frame, dx, dy, dw, dh) {
+  const img = IMG[sheetKey];
+  if (!img) return false;
+  const cols = SHEET_COLS[sheetKey] || 17;
+  ctx.drawImage(img, (frame % cols)*32, Math.floor(frame/cols)*32, 32, 32, dx, dy, dw, dh);
+  return true;
+}
+
+// Render a full w×h block of terrain with correct 9-slice (or simple top/fill for pirate)
+function renderBlock(col, row, w, h, terrainKey) {
+  const usePiratePlat = terrainKey === 'pirate-platform';
+  const usePirateTerr = terrainKey === 'pirate-terrain';
+  const t = ts();
+  for (let dy = 0; dy < h; dy++) {
+    const screenRow = row + dy;
+    if (screenRow > visR1 || screenRow < visR0) continue;
+    for (let dx = 0; dx < w; dx++) {
+      const screenCol = col + dx;
+      if (screenCol > visC1 || screenCol < visC0) continue;
+      const [sx, sy] = worldToScreen(screenCol, screenRow);
+      let frame;
+      if (usePiratePlat) {
+        frame = 0;
+      } else if (usePirateTerr) {
+        frame = dy === 0 ? LD.groundTopFrame : LD.groundFillFrame;
+      } else {
+        // Full 9-slice for 'terrain'
+        frame = get9SliceFrame(dx, dy, w, h);
+      }
+      if (!drawTerrainFrame(terrainKey, frame, sx, sy, t, t)) {
+        ctx.fillStyle = (dy === 0) ? '#5a8a3a' : '#4a3820';
+        ctx.fillRect(sx, sy, t, t);
+      }
+    }
+  }
+}
+
+function drawSprite(key, dx, dy, dw, dh, pad) {
+  const img = IMG[key]; if (!img) return false;
+  const p = dw * (pad ?? 0.05);
+  ctx.drawImage(img, 0, 0, img.width, img.height, dx+p, dy+p, dw-p*2, dh-p*2);
+  return true;
+}
+
+function drawSpriteAspect(key, dx, dy, dw, dh, pad) {
+  const img = IMG[key]; if (!img) return false;
+  const p = dw * (pad ?? 0.05);
+  const cw = dw-p*2, ch = dh-p*2;
+  const sc = Math.min(cw/img.width, ch/img.height);
+  ctx.drawImage(img, 0,0,img.width,img.height, dx+p+(cw-img.width*sc)/2, dy+p+(ch-img.height*sc)/2, img.width*sc, img.height*sc);
+  return true;
+}
+
+// ── Level data ────────────────────────────────────────────────────────────────
+
+const ALL_LEVELS = { 1: Level1Data, 2: Level2Data, 3: Level3Data };
+let currentLevelNum = 1;
+let LD = Level1Data;
+let COLS = 0, ROWS = 0;
+
+let groundSet, platformMap, platformBlocks, movingPlatMap, waterSet, entityMaps, frontPalmMap, playerStartKey;
+
+// Group platform rows (which may be individual surface/fill rows) into logical blocks
+function buildPlatformBlocks() {
+  const groups = new Map();
+  (LD.platforms || []).forEach(([col, row, w, terrainKey, frame]) => {
+    const tk = terrainKey || LD.groundTerrainKey;
+    const gk = `${col},${w},${tk}`;
+    if (!groups.has(gk)) groups.set(gk, { col, w, terrainKey: tk, rows: [] });
+    groups.get(gk).rows.push(row);
+  });
+
+  const blocks = [];
+  groups.forEach(({ col, w, terrainKey, rows }) => {
+    rows.sort((a,b) => a-b);
+    // Find consecutive row runs (separate non-contiguous groups)
+    let start = rows[0], prev = rows[0];
+    for (let i = 1; i <= rows.length; i++) {
+      if (i === rows.length || rows[i] !== prev + 1) {
+        blocks.push({ col, topRow: start, w, h: prev - start + 1, terrainKey });
+        if (i < rows.length) { start = rows[i]; prev = rows[i]; }
+      } else {
+        prev = rows[i];
+      }
+    }
+  });
+  return blocks;
+}
+
+function buildMaps() {
+  COLS = Math.ceil(LD.worldW / TILE);
+  ROWS = Math.ceil(LD.worldH / TILE);
+  document.getElementById('sb-world').textContent = `${COLS}×${ROWS} (${LD.worldW}×${LD.worldH}px)`;
+
+  groundSet = new Set();
+  (LD.ground || []).forEach(([s, w]) => {
+    for (let c = s; c < s+w; c++)
+      for (let r = LD.groundRow; r < ROWS; r++)
+        groundSet.add(`${c},${r}`);
+  });
+
+  platformMap = new Map();
+  (LD.platforms || []).forEach(([col, row, w, terrainKey, frame]) => {
+    const isFill = frame != null && frame !== LD.groundTopFrame;
+    for (let c = col; c < col+w; c++)
+      platformMap.set(`${c},${row}`, { col: c, row, startCol: col, w, isFill, terrainKey: terrainKey || LD.groundTerrainKey, frame: frame ?? LD.groundTopFrame });
+  });
+
+  platformBlocks = buildPlatformBlocks();
+
+  movingPlatMap = new Map();
+  (LD.movingPlatforms || []).forEach((mp, i) => {
+    for (let c = mp.col; c < mp.col+mp.width; c++)
+      movingPlatMap.set(`${c},${mp.row}`, { ...mp, index: i });
+  });
+
+  waterSet = new Set();
+  (LD.waterPits || []).forEach(([x1, x2]) => {
+    const c1 = Math.floor(x1/TILE), c2 = Math.ceil(x2/TILE);
+    for (let c = c1; c < c2; c++)
+      for (let r = LD.groundRow; r < ROWS; r++)
+        waterSet.add(`${c},${r}`);
+  });
+
+  function eMap(arr) {
+    const m = new Map();
+    (arr || []).forEach((item, i) => {
+      const key = `${item[0]},${item[1]}`;
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push({ index: i, data: item });
+    });
+    return m;
+  }
+  entityMaps = {
+    enemies:  eMap(LD.enemies),
+    coinArcs: eMap(LD.coinArcs),
+    diamonds: eMap(LD.diamonds),
+    derila:   eMap(LD.derila),
+    potions:  eMap(LD.potions),
+    spikes:   eMap(LD.spikes),
+    cannons:  eMap(LD.cannons),
+    traps:    eMap(LD.traps),
+    matsato:  eMap(LD.matsato),
+    sinoshi:  eMap(LD.sinoshi),
+    ryoko:    eMap(LD.ryoko),
+  };
+  function addSingle(m, col, row, type, data) {
+    const key = `${col},${row}`;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push({ type, data });
+  }
+  if (LD.doorCol  != null) addSingle(entityMaps.cannons, LD.doorCol,  LD.doorRow,  'door',  {});
+  if (LD.chestCol != null) addSingle(entityMaps.cannons, LD.chestCol, LD.chestRow, 'chest', {});
+
+  frontPalmMap = new Map();
+  (LD.frontPalms || []).forEach(([col, row], i) => {
+    const key = `${col},${row}`;
+    if (!frontPalmMap.has(key)) frontPalmMap.set(key, []);
+    frontPalmMap.get(key).push(i);
+  });
+
+  playerStartKey = LD.playerStart ? `${LD.playerStart.col},${LD.playerStart.row}` : '__none__';
+}
+
+function switchLevel(n) {
+  currentLevelNum = n; LD = ALL_LEVELS[n];
+  buildMaps();
+  [1,2,3].forEach(i => document.getElementById('lv'+i).classList.toggle('active', i === n));
+  selectedCol = -1; selectedRow = -1; selectedData = null;
+  document.getElementById('sel-empty').style.display = '';
+  document.getElementById('sel-content').style.display = 'none';
+  resetView();
+}
+
+// ── Zone data ─────────────────────────────────────────────────────────────────
+
+const LEVEL_ZONES = {
+  1: [
+    { name:'Zone 1 – The Shore',        colStart:0,   colEnd:52  },
+    { name:'Zone 2 – The Jungle',        colStart:58,  colEnd:108 },
+    { name:'Zone 3 – Tidal Pools',       colStart:114, colEnd:165 },
+    { name:'Zone 4 – Ancient Ruins',     colStart:171, colEnd:220 },
+    { name:'Zone 5 – Cliff Face',        colStart:226, colEnd:275 },
+    { name:'Zone 6 – Storm Ridge',       colStart:281, colEnd:325 },
+    { name:'Zone 7 – The Lookout',       colStart:331, colEnd:351 },
+  ],
+  2: [
+    { name:'Zone 1 – Ship Hold',  colStart:0,  colEnd:74  },
+    { name:'Zone 2 – Upper Deck', colStart:80, colEnd:149 },
+  ],
+  3: [
+    { name:'Zone 1 – Departure',      colStart:0,   colEnd:14  },
+    { name:'Zone 2 – Ocean Crossing', colStart:15,  colEnd:184 },
+    { name:'Zone 3 – Arrival',        colStart:185, colEnd:199 },
+  ],
+};
+const ZONE_COLORS = [
+  'rgba(255,200,100,0.05)','rgba(100,200,100,0.05)',
+  'rgba(100,180,255,0.05)','rgba(200,100,200,0.05)',
+  'rgba(255,140,60,0.05)', 'rgba(160,80,255,0.05)',
+  'rgba(80,255,200,0.05)',
+];
+function getZone(col) {
+  return (LEVEL_ZONES[currentLevelNum]||[]).find(z => col >= z.colStart && col <= z.colEnd) || null;
+}
+
+// ── Layers ────────────────────────────────────────────────────────────────────
+
+const LAYERS = {
+  bg:       { label:'BG',      on:true  },
+  clouds:   { label:'Clouds',  on:true  },
+  zones:    { label:'Zones',   on:true  },
+  ground:   { label:'Ground',  on:true  },
+  platf:    { label:'Platf',   on:true  },
+  moving:   { label:'Moving',  on:true  },
+  water:    { label:'Water',   on:true  },
+  enemies:  { label:'Enemies', on:true  },
+  coins:    { label:'Coins',   on:true  },
+  diamonds: { label:'Diam',    on:true  },
+  derila:   { label:'Derila',  on:true  },
+  potions:  { label:'Potions', on:true  },
+  spikes:   { label:'Spikes',  on:true  },
+  cannons:  { label:'Cannons', on:true  },
+  traps:    { label:'Traps',   on:true  },
+  door:     { label:'Door',    on:true  },
+  player:   { label:'Player',  on:true  },
+  palms:    { label:'Palms',   on:true  },
+  grid:     { label:'Grid',    on:true  },
+};
+
+function buildLayerToggles() {
+  const wrap = document.getElementById('layer-toggles');
+  Object.entries(LAYERS).forEach(([key, def]) => {
+    const btn = document.createElement('button');
+    btn.textContent = def.label;
+    btn.className = def.on ? 'active' : '';
+    btn.onclick = () => {
+      LAYERS[key].on = !LAYERS[key].on;
+      btn.className = LAYERS[key].on ? 'active' : '';
+      if (key === 'clouds') LAYERS[key].on ? startCloudAnim() : stopCloudAnim();
+      render();
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+// ── Cloud animation ───────────────────────────────────────────────────────────
+
+const cloudBig = { offset: 0 };  // tilePositionX equivalent
+const cloudSmall = [
+  { key:'cloud-1', x:120, y:48,  speed:0.3, scaleX:1.4, alpha:0.70 },
+  { key:'cloud-2', x:450, y:90,  speed:0.2, scaleX:1.1, alpha:0.55 },
+  { key:'cloud-3', x:700, y:38,  speed:0.25,scaleX:1.3, alpha:0.60 },
+];
+let cloudAnimId = null;
+
+function startCloudAnim() {
+  if (cloudAnimId) return;
+  function tick() {
+    if (!LAYERS.clouds.on) { cloudAnimId = null; return; }
+    cloudBig.offset += 0.3;
+    cloudSmall.forEach(c => {
+      c.x += c.speed;
+      if (c.x > cv.width + 120) c.x = -100;
+    });
+    render();
+    cloudAnimId = requestAnimationFrame(tick);
+  }
+  cloudAnimId = requestAnimationFrame(tick);
+}
+
+function stopCloudAnim() {
+  if (cloudAnimId) { cancelAnimationFrame(cloudAnimId); cloudAnimId = null; }
+}
+
+function drawClouds() {
+  if (!LD.visual.hasClouds) return;
+
+  // Big cloud — simulated tileSprite drift (screen-space, fixed Y)
+  const bigImg = IMG['cloud-big'];
+  if (bigImg) {
+    const bw = bigImg.width * 1.5, bh = bigImg.height * 1.5;
+    ctx.globalAlpha = 0.6;
+    const offset = cloudBig.offset % bw;
+    for (let x = -bw + offset; x < cv.width + bw; x += bw) {
+      ctx.drawImage(bigImg, x, 55, bw, bh);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Small clouds — individual screen-space sprites drifting right
+  cloudSmall.forEach(c => {
+    const img = IMG[c.key]; if (!img) return;
+    const w = img.width * c.scaleX, h = img.height * c.scaleX;
+    ctx.globalAlpha = c.alpha;
+    ctx.drawImage(img, c.x - w/2, c.y - h/2, w, h);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ── Canvas / view ─────────────────────────────────────────────────────────────
+
+const canvasWrap = document.getElementById('canvas-wrap');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+let zoom = 1, panX = 0, panY = 0;
+let dragging = false, didDrag = false;
+let dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+let hoverCol = -1, hoverRow = -1;
+let selectedCol = -1, selectedRow = -1, selectedData = null;
+let visC0 = 0, visC1 = 0, visR0 = 0, visR1 = 0;
+
+function worldToScreen(col, row) { return [col*TILE*zoom+panX, row*TILE*zoom+panY]; }
+function ts() { return TILE * zoom; }
+
+function resizeCanvas() { cv.width = canvasWrap.clientWidth; cv.height = canvasWrap.clientHeight; render(); }
+function resetView() {
+  zoom = Math.min(cv.width/(COLS*TILE), cv.height/(ROWS*TILE)) * 0.97;
+  panX = (cv.width  - COLS*TILE*zoom) / 2;
+  panY = (cv.height - ROWS*TILE*zoom) / 2;
+  document.getElementById('zoom-val').textContent = Math.round(zoom*100)+'%';
+  render();
+}
+function setZoom(z, cx, cy) {
+  const nz = Math.max(0.04, Math.min(25, z));
+  const r = nz/zoom, ox = cx ?? cv.width/2, oy = cy ?? cv.height/2;
+  panX = ox - r*(ox-panX); panY = oy - r*(oy-panY); zoom = nz;
+  document.getElementById('zoom-val').textContent = Math.round(zoom*100)+'%';
+  render();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render() {
+  const W = cv.width, H = cv.height, t = ts();
+
+  // Visible tile range
+  visC0 = Math.max(0, Math.floor(-panX/t) - 1);
+  visC1 = Math.min(COLS-1, Math.ceil((W-panX)/t) + 1);
+  visR0 = Math.max(0, Math.floor(-panY/t) - 1);
+  visR1 = Math.min(ROWS-1, Math.ceil((H-panY)/t) + 1);
+
+  // Sky fill
+  const sc = LD.visual.skyColor || 0x1a1a2e;
+  ctx.fillStyle = `rgb(${(sc>>16)&255},${(sc>>8)&255},${sc&255})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Background image ──
+  if (LAYERS.bg.on) {
+    const bgImg = LD.visual.bgKey ? IMG[LD.visual.bgKey] : null;
+    if (bgImg) {
+      const s = H / bgImg.height;
+      const bw = bgImg.width * s;
+      const startT = Math.floor(-panX / bw) - 1;
+      const needed = Math.ceil(W / bw) + 3;
+      ctx.globalAlpha = 0.85;
+      for (let i = startT; i < startT + needed; i++)
+        ctx.drawImage(bgImg, 0,0,bgImg.width,bgImg.height, i*bw+panX, 0, bw, H);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ── Clouds (screen-space) ──
+  if (LAYERS.clouds.on) drawClouds();
+
+  // ── Zone fills ──
+  if (LAYERS.zones.on) {
+    ctx.font = `bold ${Math.max(8, Math.min(t*0.45, 13))}px Courier New`;
+    ctx.textAlign = 'center';
+    (LEVEL_ZONES[currentLevelNum]||[]).forEach((z, i) => {
+      const [sx] = worldToScreen(z.colStart, 0);
+      const [ex] = worldToScreen(z.colEnd+1, 0);
+      ctx.fillStyle = ZONE_COLORS[i % ZONE_COLORS.length];
+      ctx.fillRect(sx, panY, ex-sx, ROWS*t);
+      if (t > 3) {
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillText(z.name, (sx+ex)/2, Math.max(panY+12, 12));
+      }
+    });
+  }
+
+  // ── Water pits ──
+  if (LAYERS.water.on) {
+    (LD.waterPits||[]).forEach(([x1,x2]) => {
+      const c1 = Math.floor(x1/TILE), c2 = Math.ceil(x2/TILE);
+      const [sx, sy] = worldToScreen(c1, LD.groundRow);
+      const pw = (c2-c1)*t, ph = (ROWS-LD.groundRow)*t;
+      ctx.fillStyle = '#091e30'; ctx.fillRect(sx, sy, pw, ph);
+      ctx.fillStyle = '#1a5a7a'; ctx.fillRect(sx, sy, pw, t*0.3);
+    });
+  }
+
+  // ── Ground (matches game: topFrame for groundRow, fillFrame below) ──
+  if (LAYERS.ground.on) {
+    const tk = LD.groundTerrainKey;
+    const topFr  = LD.groundTopFrame  ?? 1;
+    const fillFr = LD.groundFillFrame ?? 7;
+    (LD.ground||[]).forEach(([startCol, w]) => {
+      for (let dx = 0; dx < w; dx++) {
+        const c = startCol + dx;
+        if (c < visC0 || c > visC1) continue;
+        // Top row
+        if (LD.groundRow >= visR0 && LD.groundRow <= visR1) {
+          const [sx, sy] = worldToScreen(c, LD.groundRow);
+          if (!drawTerrainFrame(tk, topFr, sx, sy, t, t)) { ctx.fillStyle='#5a8a3a'; ctx.fillRect(sx,sy,t,t); }
+        }
+        // Fill rows below (to world bottom)
+        for (let r = LD.groundRow + 1; r < ROWS; r++) {
+          if (r < visR0 || r > visR1) continue;
+          const [sx, sy] = worldToScreen(c, r);
+          if (!drawTerrainFrame(tk, fillFr, sx, sy, t, t)) { ctx.fillStyle='#4a3820'; ctx.fillRect(sx,sy,t,t); }
+        }
+      }
+    });
+  }
+
+  // ── Platforms (matches game: each entry = one row, its exact frame) ──
+  if (LAYERS.platf.on) {
+    (LD.platforms||[]).forEach(([col, row, w, terrainKey, frame]) => {
+      if (row < visR0 || row > visR1) return;
+      const tk = terrainKey || LD.groundTerrainKey;
+      const fr = frame ?? (LD.groundTopFrame ?? 1);
+      for (let dx = 0; dx < w; dx++) {
+        const c = col + dx;
+        if (c < visC0 || c > visC1) continue;
+        const [sx, sy] = worldToScreen(c, row);
+        if (!drawTerrainFrame(tk, fr, sx, sy, t, t)) {
+          ctx.fillStyle = (fr === (LD.groundTopFrame ?? 1)) ? '#7aaa3a' : '#5a4020';
+          ctx.fillRect(sx, sy, t, t);
+        }
+      }
+    });
+  }
+
+  // ── Moving platforms ──
+  if (LAYERS.moving.on) {
+    (LD.movingPlatforms||[]).forEach(mp => {
+      if (mp.row < visR0 || mp.row > visR1) return;
+      const tk = mp.terrainKey || LD.groundTerrainKey;
+      const fr = mp.frame ?? LD.groundTopFrame;
+      for (let c = mp.col; c < mp.col+mp.width; c++) {
+        if (c < visC0 || c > visC1) continue;
+        const [sx, sy] = worldToScreen(c, mp.row);
+        if (!drawTerrainFrame(tk, fr, sx, sy, t, t)) {
+          ctx.fillStyle = '#3a6a8a'; ctx.fillRect(sx, sy, t, t);
+        }
+      }
+      // Range indicator
+      if (t >= 3) {
+        const [rx1] = worldToScreen(Math.floor(mp.rangeMin/TILE), mp.row);
+        const [rx2] = worldToScreen(Math.ceil(mp.rangeMax/TILE), mp.row);
+        const [,ry]  = worldToScreen(0, mp.row);
+        ctx.strokeStyle = 'rgba(80,180,255,0.25)';
+        ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+        ctx.strokeRect(rx1, ry, rx2-rx1, t);
+        ctx.setLineDash([]);
+      }
+    });
+  }
+
+  // ── Back palms (world-space, behind terrain) ──
+  if (LAYERS.palms.on) {
+    const bpKeys = ['back-palm-left','back-palm-regular','back-palm-right'];
+    (LD.backPalms||[]).forEach(([wx, vi, sc]) => {
+      const col = Math.floor(wx/TILE);
+      if (col < visC0-3 || col > visC1+3) return;
+      const img = IMG[bpKeys[vi % 3]]; if (!img) return;
+      const [sx] = worldToScreen(col, 0);
+      const groundPx = LD.groundRow * t + panY;
+      const ph = img.height * sc * t/TILE;
+      const pw = img.width * sc * t/TILE;
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(img, 0,0,img.width,img.height, sx - pw/2, groundPx - ph, pw, ph);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // ── Grid ──
+  if (LAYERS.grid.on && t >= 2) {
+    ctx.strokeStyle = t < 5 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.5;
+    for (let c = visC0; c <= visC1+1; c++) { const x = c*t+panX; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let r = visR0; r <= visR1+1; r++) { const y = r*t+panY; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    if (t >= 10) {
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.font = `${Math.max(7, t*0.3)}px Courier New`;
+      ctx.textAlign = 'center';
+      for (let c = Math.ceil(visC0/10)*10; c <= visC1; c += 10) {
+        const [x] = worldToScreen(c,0);
+        ctx.fillText(c, x+t/2, Math.max(panY+t-3, 9));
+      }
+      ctx.textAlign = 'right';
+      for (let r = Math.ceil(visR0/5)*5; r <= visR1; r += 5) {
+        const [,y] = worldToScreen(0,r);
+        ctx.fillText(r, Math.max(panX-3, 18), y+t*0.6);
+      }
+    }
+  }
+
+  // ── Ground-row dashed line ──
+  if (LAYERS.grid.on && t > 2) {
+    const [,gy] = worldToScreen(0, LD.groundRow);
+    ctx.strokeStyle = 'rgba(255,60,60,0.3)';
+    ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ── Zone boundary lines ──
+  if (LAYERS.zones.on && t > 2) {
+    ctx.strokeStyle = 'rgba(255,190,80,0.2)';
+    ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    (LEVEL_ZONES[currentLevelNum]||[]).forEach(z => {
+      [[z.colStart],[z.colEnd+1]].forEach(([c]) => {
+        const [x] = worldToScreen(c,0);
+        ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+      });
+    });
+    ctx.setLineDash([]);
+  }
+
+  // ─── Entity rendering helpers ────────────────────────────────────────────────
+  function fallback(col, row, color, sym) {
+    const [sx,sy] = worldToScreen(col,row);
+    ctx.fillStyle = color; ctx.fillRect(sx+t*0.08, sy+t*0.08, t*0.84, t*0.84);
+    if (sym && t >= 12) { ctx.fillStyle='rgba(0,0,0,0.85)'; ctx.font=`bold ${Math.max(8,t*0.42)}px Courier New`; ctx.textAlign='center'; ctx.fillText(sym,sx+t/2,sy+t*0.67); }
+  }
+
+  // ── Enemies ──
+  if (LAYERS.enemies.on) {
+    (LD.enemies||[]).forEach(([col,row,type]) => {
+      if (col<visC0-3||col>visC1+3||row<visR0||row>visR1) return;
+      const [sx,sy] = worldToScreen(col,row);
+      const ew = t*2.3, eh = t;
+      const colors = { crabby:'#e07020', fierce:'#c03030', pink:'#c060b0' };
+      if (!drawSprite(type, sx-(ew-t)/2, sy, ew, eh, 0))
+        fallback(col, row, colors[type]||'#e00', type[0].toUpperCase());
+    });
+  }
+
+  // ── Coins ──
+  if (LAYERS.coins.on) {
+    (LD.coinArcs||[]).forEach(([sc2,pr,count,sp]) => {
+      for (let i = 0; i < count; i++) {
+        const c = sc2 + i*(sp||1), r = pr-1;
+        if (c<visC0||c>visC1||r<visR0||r>visR1) continue;
+        const [sx,sy] = worldToScreen(c,r);
+        if (!drawSprite('coin',sx,sy,t,t,0.12)) fallback(c,r,'#f0c040','¢');
+      }
+    });
+  }
+
+  // ── Diamonds ──
+  if (LAYERS.diamonds.on) {
+    (LD.diamonds||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0||col>visC1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      if (!drawSprite('diamond',sx,sy,t,t,0.1)) fallback(col,r,'#40a0f0','◆');
+    });
+  }
+
+  // ── Derila ──
+  if (LAYERS.derila.on) {
+    (LD.derila||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0||col>visC1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      if (!drawSpriteAspect('derila',sx,sy,t,t,0.05)) fallback(col,r,'#ff69b4','D');
+    });
+  }
+
+  // ── Ryoko wifi routers ──
+  if (LAYERS.derila.on) {
+    (LD.ryoko||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0||col>visC1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      if (!drawSpriteAspect('ryoko',sx,sy,t,t,0.05)) fallback(col,r,'#a0d080','RY');
+    });
+  }
+
+  // ── Sinoshi shower heads ──
+  if (LAYERS.derila.on) {
+    (LD.sinoshi||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0||col>visC1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      if (!drawSpriteAspect('sinoshi',sx,sy,t,t,0.05)) fallback(col,r,'#80c0e0','SH');
+    });
+  }
+
+  // ── Matsato knives ──
+  if (LAYERS.derila.on) {
+    (LD.matsato||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0||col>visC1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      if (!drawSpriteAspect('matsato',sx,sy,t,t,0.05)) fallback(col,r,'#c0a060','K');
+    });
+  }
+
+  // ── Potions ──
+  if (LAYERS.potions.on) {
+    (LD.potions||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0||col>visC1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      if (!drawSprite('potion',sx,sy,t,t,0.1)) fallback(col,r,'#40e080','+');
+    });
+  }
+
+  // ── Spikes ──
+  if (LAYERS.spikes.on) {
+    (LD.spikes||[]).forEach(([col,row]) => {
+      if (col<visC0||col>visC1||row<visR0||row>visR1) return;
+      const [sx,sy] = worldToScreen(col,row);
+      if (!drawSprite('spikes',sx,sy,t,t,0)) {
+        ctx.fillStyle='#ff3333';
+        const n = Math.max(1,Math.floor(t/8)), sw = t/n;
+        for (let i=0;i<n;i++) { ctx.beginPath(); ctx.moveTo(sx+i*sw,sy+t); ctx.lineTo(sx+i*sw+sw/2,sy+t*0.2); ctx.lineTo(sx+(i+1)*sw,sy+t); ctx.fill(); }
+      }
+    });
+  }
+
+  // ── Cannons ──
+  if (LAYERS.cannons.on) {
+    (LD.cannons||[]).forEach(([col,row,dir]) => {
+      if (col<visC0||col>visC1||row<visR0||row>visR1) return;
+      const [sx,sy] = worldToScreen(col,row);
+      ctx.save();
+      if (dir === 'right') { ctx.translate(sx+t,sy); ctx.scale(-1,1); ctx.translate(-sx,-sy); }
+      if (!drawSprite('cannon',sx,sy,t,t,0)) { ctx.fillStyle='#e08020'; ctx.fillRect(sx+t*0.1,sy+t*0.2,t*0.8,t*0.6); }
+      ctx.restore();
+    });
+  }
+
+  // ── Shooter traps (seashell / totems) ──
+  if (LAYERS.traps.on) {
+    (LD.traps||[]).forEach(([col,row,type,dir]) => {
+      if (col<visC0||col>visC1||row<visR0||row>visR1) return;
+      const [sx,sy] = worldToScreen(col,row);
+      const trapColors = { seashell:'#40d0c0', totem1:'#e06030', totem2:'#d04040', totem3:'#b040d0' };
+      ctx.save();
+      if (dir === 'right') { ctx.translate(sx+t,sy); ctx.scale(-1,1); ctx.translate(-sx,-sy); }
+      if (!drawSprite(type,sx,sy,t,t,0.05))
+        fallback(col,row, trapColors[type]||'#e0a040', type === 'seashell' ? 'S' : type[5]);
+      ctx.restore();
+      // Draw fire-direction arrow
+      if (t >= 10) {
+        const ax = dir==='left' ? sx-t*0.4 : sx+t*1.4;
+        const ay = sy + t*0.5;
+        ctx.fillStyle = 'rgba(255,80,80,0.7)';
+        ctx.beginPath();
+        if (dir==='left') { ctx.moveTo(ax,ay); ctx.lineTo(ax+t*0.3,ay-t*0.18); ctx.lineTo(ax+t*0.3,ay+t*0.18); }
+        else               { ctx.moveTo(ax,ay); ctx.lineTo(ax-t*0.3,ay-t*0.18); ctx.lineTo(ax-t*0.3,ay+t*0.18); }
+        ctx.fill();
+      }
+    });
+  }
+
+  // ── Door / Chest ──
+  if (LAYERS.door.on && LD.doorCol != null) {
+    const [dsx,dsy] = worldToScreen(LD.doorCol, LD.doorRow);
+    if (!drawSprite('door', dsx-t*0.25, dsy-t, t*1.5, t*2, 0)) {
+      ctx.fillStyle='#c0a040'; ctx.fillRect(dsx,dsy,t,t);
+    }
+    if (LD.chestCol != null) {
+      const [csx,csy] = worldToScreen(LD.chestCol, LD.chestRow);
+      if (!drawSprite('chest',csx,csy,t,t,0.05)) { ctx.fillStyle='#8a6020'; ctx.fillRect(csx,csy,t,t); }
+    }
+  }
+
+  // ── Front palms ──
+  if (LAYERS.palms.on) {
+    (LD.frontPalms||[]).forEach(([col,row]) => {
+      const r = row-1; if (col<visC0-1||col>visC1+1||r<visR0||r>visR1) return;
+      const [sx,sy] = worldToScreen(col,r);
+      const pw = t*2.2, ph = t*1.5;
+      if (!drawSprite('front-palm',sx-(pw-t)/2, sy-ph*0.3, pw, ph, 0)) {
+        ctx.fillStyle='rgba(64,192,96,0.45)'; ctx.beginPath(); ctx.arc(sx+t/2,sy+t/2,t*0.42,0,Math.PI*2); ctx.fill();
+      }
+    });
+  }
+
+  // ── Player start ──
+  if (LAYERS.player.on && LD.playerStart) {
+    const {col,row} = LD.playerStart;
+    if (col>=visC0&&col<=visC1&&row>=visR0&&row<=visR1) {
+      const [sx,sy] = worldToScreen(col,row);
+      const pw=t*2, ph=t*1.25;
+      if (!drawSprite('player',sx-(pw-t)/2,sy-(ph-t),pw,ph,0)) {
+        ctx.fillStyle='rgba(0,255,200,0.7)'; ctx.fillRect(sx+t*0.1,sy+t*0.1,t*0.8,t*0.85);
+      }
+    }
+  }
+
+  // ── Selected tile ──
+  if (selectedCol >= 0 && selectedRow >= 0) {
+    const [sx,sy] = worldToScreen(selectedCol,selectedRow);
+    ctx.fillStyle='rgba(85,170,255,0.13)'; ctx.fillRect(sx,sy,t,t);
+    ctx.strokeStyle='#55aaff'; ctx.lineWidth=Math.max(1.5,t*0.08);
+    ctx.strokeRect(sx+0.5,sy+0.5,t-1,t-1);
+    const b = Math.min(t*0.28,7);
+    ctx.strokeStyle='#aaddff'; ctx.lineWidth=Math.max(1.5,t*0.06);
+    [[sx,sy],[sx+t,sy],[sx,sy+t],[sx+t,sy+t]].forEach(([cx,cy],i) => {
+      const dx=i%2===0?1:-1, dy=i<2?1:-1;
+      ctx.beginPath(); ctx.moveTo(cx+dx*b,cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy+dy*b); ctx.stroke();
+    });
+  }
+
+  // ── Hover highlight ──
+  if (hoverCol>=0&&hoverRow>=0&&!(hoverCol===selectedCol&&hoverRow===selectedRow)) {
+    const [sx,sy] = worldToScreen(hoverCol,hoverRow);
+    ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=Math.max(1,t*0.05);
+    ctx.strokeRect(sx+0.5,sy+0.5,t-1,t-1);
+    ctx.fillStyle='rgba(255,255,255,0.05)'; ctx.fillRect(sx,sy,t,t);
+  }
+
+  document.getElementById('sb-pan').textContent = `${Math.round(panX)},${Math.round(panY)} z=${zoom.toFixed(3)}`;
+}
+
+// ── Tile content collection ───────────────────────────────────────────────────
+
+function collectThings(col, row) {
+  const things = [];
+  const key = `${col},${row}`;
+
+  if (groundSet.has(key)) {
+    const isTop = row === LD.groundRow;
+    things.push({ type:'ground', label:isTop?'Ground surface':'Ground fill', color:isTop?'#5a8a3a':'#4a3820', desc:`terrainKey=${LD.groundTerrainKey}, row=${row}` });
+  }
+  if (platformMap.has(key)) {
+    const p = platformMap.get(key);
+    things.push({ type:'platform', label:p.isFill?'Platform fill':'Platform surface', color:p.isFill?'#5a4020':'#7aaa3a', desc:`startCol=${p.startCol}, w=${p.w}, row=${p.row}, key=${p.terrainKey}, frame=${p.frame}` });
+  }
+  if (movingPlatMap.has(key)) {
+    const mp = movingPlatMap.get(key);
+    things.push({ type:'moving', label:'Moving platform', color:'#3a8aaa', desc:`col=${mp.col}, w=${mp.width}, row=${mp.row}, ${mp.moveAxis}, range=${mp.rangeMin/TILE}–${mp.rangeMax/TILE} cols, speed=${mp.speed}` });
+  }
+  if (waterSet.has(key)) things.push({ type:'water', label:'Water pit (death)', color:'#1a5a7a', desc:'' });
+  if (key === playerStartKey) things.push({ type:'player', label:'Player start', color:'#00ffcc', desc:`col=${LD.playerStart.col}, row=${LD.playerStart.row}` });
+
+  const checkKeys = [key, `${col},${row-1}`, `${col},${row+1}`];
+  checkKeys.forEach(ck => {
+    const cols = { crabby:'#e07020', fierce:'#c03030', pink:'#c060b0' };
+    (entityMaps.enemies.get(ck)||[]).forEach(e => {
+      const [ec,er,type,patrol]=e.data;
+      things.push({ type:'enemy', label:`Enemy: ${type}`, color:cols[type]||'#e00', desc:`col=${ec}, row=${er}, patrol=${patrol}px` });
+    });
+    (entityMaps.coinArcs.get(ck)||[]).forEach(e => {
+      const [sc2,pr,count,sp]=e.data;
+      things.push({ type:'coin', label:'Coin arc', color:'#f0c040', desc:`startCol=${sc2}, platRow=${pr}, count=${count}, spacing=${sp}` });
+    });
+    (entityMaps.diamonds.get(ck)||[]).forEach(e => {
+      const [dc,dr]=e.data;
+      things.push({ type:'diamond', label:'Diamond (+50)', color:'#40a0f0', desc:`col=${dc}, row=${dr}` });
+    });
+    (entityMaps.derila.get(ck)||[]).forEach(e => {
+      const [dc,dr]=e.data;
+      things.push({ type:'derila', label:'Derila pillow (+500)', color:'#ff69b4', desc:`col=${dc}, row=${dr}` });
+    });
+    (entityMaps.potions.get(ck)||[]).forEach(e => {
+      const [pc,pr]=e.data;
+      things.push({ type:'potion', label:'Potion (heal)', color:'#40e080', desc:`col=${pc}, row=${pr}` });
+    });
+    (entityMaps.spikes.get(ck)||[]).forEach(e => {
+      const [sc2,sr]=e.data;
+      things.push({ type:'spike', label:'Spike trap', color:'#ff3333', desc:`col=${sc2}, row=${sr}` });
+    });
+    (entityMaps.cannons.get(ck)||[]).forEach(e => {
+      if (e.type==='door')  { things.push({ type:'door',   label:'Level exit door',      color:'#c0a040', desc:`col=${LD.doorCol}, row=${LD.doorRow}` }); return; }
+      if (e.type==='chest') { things.push({ type:'chest',  label:'Treasure chest (+200)', color:'#c09030', desc:`col=${LD.chestCol}, row=${LD.chestRow}` }); return; }
+      const [cc,cr,dir]=e.data;
+      things.push({ type:'cannon', label:`Cannon (fires ${dir})`, color:'#e08020', desc:`col=${cc}, row=${cr}, dir=${dir}` });
+    });
+    if (frontPalmMap.has(ck)) things.push({ type:'palm', label:'Front palm', color:'#40c060', desc:`col=${col}, row=${row}` });
+  });
+  return things;
+}
+
+// ── Hover ─────────────────────────────────────────────────────────────────────
+
+function updateHover(col, row) {
+  hoverCol = col; hoverRow = row;
+  document.getElementById('hi-col').textContent = col;
+  document.getElementById('hi-row').textContent = row;
+  document.getElementById('hi-wx').textContent  = col*TILE+'px';
+  document.getElementById('hi-wy').textContent  = row*TILE+'px';
+  const zone = getZone(col);
+  document.getElementById('hi-zone').textContent = zone ? zone.name : '–';
+  const things = collectThings(col, row);
+  const el = document.getElementById('hover-things');
+  el.innerHTML = things.length
+    ? '<h3>Contents:</h3>' + things.map(t => `<div class="info-item" style="border-color:${t.color};background:${t.color}18"><strong>${t.label}</strong>${t.desc?`<br><span style="color:#667">${t.desc}</span>`:''}</div>`).join('')
+    : '<div style="color:#234;font-size:9px;padding:2px 0">— empty —</div>';
+  render();
+}
+
+// ── Select ────────────────────────────────────────────────────────────────────
+
+function selectTile(col, row) {
+  selectedCol = col; selectedRow = row;
+  const zone = getZone(col);
+  const things = collectThings(col, row);
+  selectedData = { col, row, zone: zone ? zone.name : 'off-zone', things };
+  document.getElementById('sel-empty').style.display = 'none';
+  document.getElementById('sel-content').style.display = 'block';
+  document.getElementById('sc-col').textContent = col;
+  document.getElementById('sc-row').textContent = row;
+  document.getElementById('sc-wx').textContent  = col*TILE+'px';
+  document.getElementById('sc-wy').textContent  = row*TILE+'px';
+  document.getElementById('sel-zone').textContent = selectedData.zone;
+  const el = document.getElementById('sel-things');
+  el.innerHTML = things.length
+    ? things.map(t => `<div class="info-item" style="border-color:${t.color};background:${t.color}22"><strong>${t.label}</strong>${t.desc?`<br><span style="color:#6ab">${t.desc}</span>`:''}</div>`).join('')
+    : '<div style="color:#234;font-size:9px;padding:2px 0">— empty tile —</div>';
+  render();
+}
+
+function copySelected() {
+  if (!selectedData) return;
+  const { col, row, zone, things } = selectedData;
+  let text = `## Tile Debug — Level ${currentLevelNum}, col=${col}, row=${row}\n`;
+  text += `- Zone: ${zone}\n- World: x=${col*TILE}px, y=${row*TILE}px\n- Center: x=${col*TILE+TILE/2}px, y=${row*TILE+TILE/2}px\n\n`;
+  if (!things.length) { text += '**Empty tile**\n'; }
+  else { text += '### Contents\n'; things.forEach(t => { text += `- **${t.label}**${t.desc?': '+t.desc:''}\n`; }); }
+  text += '\n### Nearby (±2 tiles)\n';
+  const nearby = [];
+  for (let dc=-2; dc<=2; dc++) for (let dr=-2; dr<=2; dr++) {
+    if (!dc&&!dr) continue;
+    const nc=col+dc, nr=row+dr, nk=`${nc},${nr}`;
+    const tags=[];
+    if (groundSet.has(nk))     tags.push(nr===LD.groundRow?'ground-top':'ground-fill');
+    if (platformMap.has(nk))   tags.push(platformMap.get(nk).isFill?'plat-fill':'plat-surface');
+    if (movingPlatMap.has(nk)) tags.push('moving-plat');
+    if (waterSet.has(nk))      tags.push('water');
+    (entityMaps.enemies.get(nk)||[]).forEach(e => tags.push(`enemy:${e.data[2]}`));
+    (entityMaps.spikes.get(nk)||[]).forEach(() => tags.push('spike'));
+    (entityMaps.cannons.get(nk)||[]).forEach(e => tags.push(e.type||'cannon'));
+    if (tags.length) nearby.push(`  [${nc},${nr}]: ${tags.join(', ')}`);
+  }
+  text += nearby.length ? nearby.join('\n') : '  (no notable tiles)';
+  const btn = document.getElementById('copy-btn');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent='✓ Copied!'; btn.classList.add('ok');
+    setTimeout(() => { btn.textContent='📋 Copy for Claude'; btn.classList.remove('ok'); }, 2000);
+  });
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function exportReport() {
+  let out = `# Level ${currentLevelNum} Report\nWorld: ${LD.worldW}×${LD.worldH}px (${COLS}×${ROWS} tiles)\n\n`;
+  out += '## Ground\n'; (LD.ground||[]).forEach(([s,w]) => out += `- cols ${s}–${s+w-1} (w=${w})\n`);
+  out += '\n## Platform blocks\n'; platformBlocks.forEach(b => out += `- col=${b.col}, row=${b.topRow}, w=${b.w}, h=${b.h}, key=${b.terrainKey}\n`);
+  if (LD.movingPlatforms?.length) { out += '\n## Moving platforms\n'; LD.movingPlatforms.forEach(mp => out += `- col=${mp.col}, row=${mp.row}, w=${mp.width}, ${mp.moveAxis}, ${mp.rangeMin/TILE}–${mp.rangeMax/TILE}, speed=${mp.speed}\n`); }
+  out += '\n## Enemies\n'; (LD.enemies||[]).forEach(([c,r,t,p]) => out += `- ${t} col=${c} row=${r} patrol=${p}\n`);
+  out += '\n## Derila\n'; (LD.derila||[]).forEach(([c,r]) => { const z=getZone(c); out+=`- col=${c}, row=${r}${z?' | '+z.name:''}\n`; });
+  out += '\n## Spikes\n'; (LD.spikes||[]).forEach(([c,r]) => out+=`- col=${c}, row=${r}\n`);
+  out += '\n## Cannons\n'; (LD.cannons||[]).forEach(([c,r,d]) => out+=`- col=${c}, row=${r}, fires=${d}\n`);
+  if (LD.doorCol!=null)  out+=`\nDoor: col=${LD.doorCol}, row=${LD.doorRow}\n`;
+  if (LD.chestCol!=null) out+=`Chest: col=${LD.chestCol}, row=${LD.chestRow}\n`;
+  navigator.clipboard.writeText(out).then(() => alert('Copied to clipboard!'));
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+
+function buildLegend() {
+  const items = [
+    ['#5a8a3a','Ground surface (topFrame)'],
+    ['#4a3820','Ground fill (fillFrame)'],
+    ['#7aaa3a','Platform surface'],
+    ['#5a4020','Platform fill'],
+    ['#3a8aaa','Moving platform'],
+    ['#091e30','Water pit (death)'],
+    ['#e07020','Crabby (1 HP)'],
+    ['#c03030','Fierce Tooth (2 HP)'],
+    ['#c060b0','Pink Star (3 HP)'],
+    ['#f0c040','Coins'],
+    ['#40a0f0','Diamond (+50)'],
+    ['#ff69b4','Derila pillow (+500)'],
+    ['#c0a060','Matsato knife (+250)'],
+    ['#80c0e0','Sinoshi shower head (+250)'],
+    ['#a0d080','Ryoko wifi router (+250)'],
+    ['#40e080','Potion (heal)'],
+    ['#ff3333','Spike trap'],
+    ['#e08020','Cannon'],
+    ['#c0a040','Door / Chest'],
+    ['#00ffcc','Player start'],
+  ];
+  document.getElementById('leg-items').innerHTML = items.map(([c,l]) =>
+    `<div class="leg-row"><div class="leg-sw" style="background:${c}"></div>${l}</div>`
+  ).join('');
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+
+cv.addEventListener('mousedown', e => {
+  dragging=true; didDrag=false;
+  dragStartX=e.clientX; dragStartY=e.clientY; panStartX=panX; panStartY=panY;
+});
+window.addEventListener('mouseup', e => {
+  if (!didDrag) {
+    const r = cv.getBoundingClientRect();
+    const col = Math.floor((e.clientX-r.left-panX)/ts());
+    const row = Math.floor((e.clientY-r.top -panY)/ts());
+    if (col>=0&&col<COLS&&row>=0&&row<ROWS) selectTile(col,row);
+  }
+  dragging=false;
+});
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect();
+  const col = Math.floor((e.clientX-r.left-panX)/ts());
+  const row = Math.floor((e.clientY-r.top -panY)/ts());
+  document.getElementById('sb-mouse').textContent = `col=${col}, row=${row} (${col*TILE}px, ${row*TILE}px)`;
+  if (col>=0&&col<COLS&&row>=0&&row<ROWS) updateHover(col,row);
+  else { hoverCol=-1; hoverRow=-1; render(); }
+  if (dragging) {
+    const dx=e.clientX-dragStartX, dy=e.clientY-dragStartY;
+    if (Math.abs(dx)>4||Math.abs(dy)>4) didDrag=true;
+    if (didDrag) { panX=panStartX+dx; panY=panStartY+dy; render(); }
+  }
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect();
+  setZoom(zoom*(e.deltaY<0?1.2:1/1.2), e.clientX-r.left, e.clientY-r.top);
+}, { passive:false });
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+window.addEventListener('resize', resizeCanvas);
+buildMaps();
+buildLayerToggles();
+buildLegend();
+resizeCanvas();
+resetView();
+startCloudAnim();
+</script>
+</body>
+</html>

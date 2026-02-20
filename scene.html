@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Terrain Prototype — Captain ORBIO</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a14;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: Georgia, serif;
+    }
+    h1 { color: #f5d76e; font-size: 15px; margin-bottom: 8px; letter-spacing: 1px; }
+    .links { margin-top: 8px; font-size: 12px; color: #a8d8ea; }
+    .links a { color: #f5d76e; text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<h1>Captain ORBIO — Terrain Prototype (Arrow keys to scroll)</h1>
+<div id="game-container"></div>
+<div class="links">
+  No gameplay · 9-slice terrain demo ·
+  <a href="tile-viewer.html" target="_blank">View tileset frames →</a> ·
+  <a href="index.html">Play game →</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+<script>
+// ──────────────────────────────────────────────────────────────────────────────
+// SCENE.HTML  —  Terrain 9-slice prototype, scrollable world
+// World: 2400×800 | Camera: 800×480 | Arrow keys to pan
+// ──────────────────────────────────────────────────────────────────────────────
+
+const WORLD_W = 2400, WORLD_H = 800;
+const CAM_W = 800, CAM_H = 480;
+const TILE = 32;
+const GROUND_ROW = 20;      // ground surface top row
+const GROUND_DEPTH = 5;     // tiles deep
+const SKY_COLOR = 0xEDD5A0;
+const SCROLL_SPEED = 6;
+
+// 9-slice frame indices (Palm Tree Island terrain, 17×5 grid, 0-indexed)
+const F = {
+  TL: 0,  TC: 1,  TR: 2,
+  ML: 17, MC: 18, MR: 19,
+  BL: 34, BC: 35, BR: 36,
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+class TerrainScene extends Phaser.Scene {
+  constructor() { super({ key: 'TerrainScene' }); }
+
+  // ── PRELOAD ─────────────────────────────────────────────────────────────────
+  preload() {
+    this.add.text(CAM_W / 2, CAM_H / 2, 'Loading…', {
+      fontSize: '20px', color: '#f5d76e', fontFamily: 'Georgia'
+    }).setOrigin(0.5);
+
+    // Terrain spritesheet
+    this.load.spritesheet('terrain',
+      'asset/Palm Tree Island/Sprites/Terrain/Terrain (32x32).png',
+      { frameWidth: 32, frameHeight: 32 });
+
+    // Background
+    this.load.image('bg-main', 'asset/Palm Tree Island/Sprites/Background/BG Image.png');
+    this.load.image('cloud-big', 'asset/Palm Tree Island/Sprites/Background/Big Clouds.png');
+    this.load.image('cloud-1', 'asset/Palm Tree Island/Sprites/Background/Small Cloud 1.png');
+    this.load.image('cloud-2', 'asset/Palm Tree Island/Sprites/Background/Small Cloud 2.png');
+    this.load.image('cloud-3', 'asset/Palm Tree Island/Sprites/Background/Small Cloud 3.png');
+
+    // Back palm trees (3 variants × 4 frames)
+    const backBase = 'asset/Palm Tree Island/Sprites/Back Palm Trees/';
+    for (let i = 1; i <= 4; i++) {
+      const n = String(i).padStart(2, '0');
+      this.load.image(`bpl-${i}`, `${backBase}Back Palm Tree Left ${n}.png`);
+      this.load.image(`bpr-${i}`, `${backBase}Back Palm Tree Regular ${n}.png`);
+      this.load.image(`bpR-${i}`, `${backBase}Back Palm Tree Right ${n}.png`);
+    }
+
+    // Front palm tops (4 frames)
+    const frontBase = 'asset/Palm Tree Island/Sprites/Front Palm Trees/';
+    for (let i = 1; i <= 4; i++)
+      this.load.image(`fpt-${i}`,
+        `${frontBase}Front Palm Tree Top ${String(i).padStart(2, '0')}.png`);
+
+    // Door (level goal — 5 closing frames)
+    const doorBase = 'asset/Pirate Ship/Sprites/Decorations/Door/';
+    for (let i = 1; i <= 5; i++) {
+      const n = String(i).padStart(2, '0');
+      this.load.image(`door-close-${i}`, `${doorBase}Closing/${n}.png`);
+    }
+
+    // Chest, spikes
+    this.load.image('chest',
+      'asset/Palm Tree Island/Sprites/Objects/Chest/Chest Close 01.png');
+    this.load.image('spikes',
+      'asset/Palm Tree Island/Sprites/Objects/Spikes/Spikes.png');
+
+    // Collectibles
+    const treasureBase = 'asset/Pirate Treasure/Sprites/';
+    for (let i = 1; i <= 4; i++) {
+      const n = String(i).padStart(2, '0');
+      this.load.image(`coin-${i}`, `${treasureBase}Gold Coin/${n}.png`);
+      this.load.image(`diamond-${i}`, `${treasureBase}Blue Diamond/${n}.png`);
+    }
+
+    // Cannon
+    this.load.image('cannon-idle',
+      'asset/Shooter Traps/Sprites/Cannon/Cannon Idle/1.png');
+
+    // Derila pillow
+    this.load.image('derila', 'asset/derila-game.png');
+  }
+
+  // ── CREATE ──────────────────────────────────────────────────────────────────
+  create() {
+    // World bounds + camera
+    this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
+    this.cameras.main.setScroll(0, WORLD_H - CAM_H);
+
+    // Input
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this._wasd = this.input.keyboard.addKeys('W,A,S,D');
+
+    // Build layers
+    this._buildAnims();
+    this._buildSky();
+    this._buildClouds();
+    this._buildWater();
+    this._buildBackPalms();
+    this._buildGround();
+    this._buildPlatforms();
+    this._buildFrontPalms();
+    this._buildDecorations();
+    this._buildHUD();
+  }
+
+  // ── 9-SLICE PLATFORM BUILDER ────────────────────────────────────────────────
+  // Places terrain tiles using proper corner/edge/fill frames.
+  //   col, row = top-left tile position (in tile coords)
+  //   w, h     = size in tiles
+  _buildBlock(col, row, w, h) {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        let frame;
+        const left = dx === 0, right = dx === w - 1;
+        const top  = dy === 0, bot   = dy === h - 1;
+
+        if (w === 1 && h === 1) {
+          frame = F.TC;   // single tile → grass cap
+        } else if (w === 1) {
+          // vertical pillar
+          frame = top ? F.TC : bot ? F.BC : F.MC;
+        } else if (h === 1) {
+          // thin horizontal platform
+          frame = left ? F.TL : right ? F.TR : F.TC;
+        } else {
+          // full N×M block — all 9 frame types
+          if      (top && left)  frame = F.TL;
+          else if (top && right) frame = F.TR;
+          else if (top)          frame = F.TC;
+          else if (bot && left)  frame = F.BL;
+          else if (bot && right) frame = F.BR;
+          else if (bot)          frame = F.BC;
+          else if (left)         frame = F.ML;
+          else if (right)        frame = F.MR;
+          else                   frame = F.MC;
+        }
+
+        const px = (col + dx) * TILE + TILE / 2;
+        const py = (row + dy) * TILE + TILE / 2;
+        this.add.image(px, py, 'terrain', frame).setDepth(0);
+      }
+    }
+  }
+
+  // ── ANIMATIONS ──────────────────────────────────────────────────────────────
+  _buildAnims() {
+    const mk = (key, keys, fps) =>
+      this.anims.create({
+        key,
+        frames: keys.map(k => ({ key: k, frame: 0 })),
+        frameRate: fps,
+        repeat: -1
+      });
+    mk('anim-bpl', [1,2,3,4].map(i => `bpl-${i}`), 5);
+    mk('anim-bpr', [1,2,3,4].map(i => `bpr-${i}`), 5);
+    mk('anim-bpR', [1,2,3,4].map(i => `bpR-${i}`), 5);
+    mk('anim-fpt', [1,2,3,4].map(i => `fpt-${i}`), 5);
+    mk('anim-door-close', [1,2,3,4,5].map(i => `door-close-${i}`), 8);
+    mk('anim-coin', [1,2,3,4].map(i => `coin-${i}`), 8);
+    mk('anim-diamond', [1,2,3,4].map(i => `diamond-${i}`), 8);
+  }
+
+  // ── SKY + BACKGROUND ────────────────────────────────────────────────────────
+  _buildSky() {
+    // Sky fill — covers viewport
+    this.add.rectangle(CAM_W / 2, CAM_H / 2, CAM_W, CAM_H, SKY_COLOR)
+      .setDepth(-20).setScrollFactor(0);
+
+    // BG image — tiled, scrollFactor(0) + tilePositionX parallax in update()
+    const bgH = this.textures.get('bg-main').getSourceImage().height;
+    const s = CAM_H / bgH;
+    this._bgLayer = this.add.tileSprite(CAM_W / 2, CAM_H / 2, CAM_W, CAM_H, 'bg-main')
+      .setTileScale(s, s)
+      .setDepth(-19)
+      .setScrollFactor(0);
+  }
+
+  // ── CLOUDS — continuous auto-drift ──────────────────────────────────────────
+  _buildClouds() {
+    const d = -18;
+
+    // Big clouds — tileSprite that scrolls continuously
+    this._bigClouds = this.add.tileSprite(CAM_W / 2, 75, CAM_W, 64, 'cloud-big')
+      .setScrollFactor(0).setDepth(d).setScale(1.5).setAlpha(0.75);
+
+    // Small clouds — individual sprites drifting at different speeds
+    this._smallClouds = [
+      { sprite: this.add.image(120,  48, 'cloud-1').setScrollFactor(0).setDepth(d).setScale(1.4).setAlpha(0.7), speed: 0.3 },
+      { sprite: this.add.image(450,  95, 'cloud-2').setScrollFactor(0).setDepth(d).setScale(1.1).setAlpha(0.55), speed: 0.2 },
+      { sprite: this.add.image(700,  38, 'cloud-3').setScrollFactor(0).setDepth(d).setScale(1.3).setAlpha(0.6), speed: 0.25 },
+    ];
+  }
+
+  // ── WATER FILLS ─────────────────────────────────────────────────────────────
+  _buildWater() {
+    const gaps = [
+      [18, 20],   // cols 18-20
+      [39, 41],   // cols 39-41
+      [58, 60],   // cols 58-60
+    ];
+    const waterTop = GROUND_ROW * TILE;
+    const waterBot = WORLD_H;
+    const waterH   = waterBot - waterTop;
+
+    gaps.forEach(([c1, c2]) => {
+      const x1 = c1 * TILE;
+      const w  = (c2 - c1 + 1) * TILE;
+      const cx = x1 + w / 2;
+      const cy = waterTop + waterH / 2;
+
+      // Water body
+      this.add.rectangle(cx, cy, w, waterH, 0x1A6B8A).setDepth(-3);
+      // Surface highlight
+      this.add.rectangle(cx, waterTop + 2, w, 4, 0x2FA8C4).setDepth(-2);
+    });
+  }
+
+  // ── GROUND (4 segments with gaps) ───────────────────────────────────────────
+  _buildGround() {
+    // [startCol, width]
+    const segments = [
+      [0,  18],   // Zone 1
+      [21, 18],   // Zone 2
+      [42, 16],   // Zone 3
+      [61, 14],   // Zone 4
+    ];
+    segments.forEach(([col, w]) => {
+      this._buildBlock(col, GROUND_ROW, w, GROUND_DEPTH);
+    });
+  }
+
+  // ── PLATFORMS (varied shapes) ───────────────────────────────────────────────
+  _buildPlatforms() {
+    // ── Zone 1: Tutorial — thin platforms, single tiles, small block ──
+    this._buildBlock(3,  17, 3, 1);   // 3×1 thin platform
+    this._buildBlock(8,  15, 1, 1);   // 1×1 single tile
+    this._buildBlock(10, 13, 1, 1);   // 1×1 single tile (higher)
+    this._buildBlock(13, 16, 4, 1);   // 4×1 thin platform
+    this._buildBlock(16, 18, 2, 2);   // 2×2 small block
+
+    // ── Zone 2: Varied — thick block, ascending steps ────────────────
+    this._buildBlock(23, 15, 5, 3);   // 5×3 thick block
+    this._buildBlock(31, 18, 2, 1);   // step 1
+    this._buildBlock(33, 16, 2, 1);   // step 2
+    this._buildBlock(35, 14, 2, 1);   // step 3
+
+    // ── Zone 3: Complex — long thin, thick block, pillar, elevated ────
+    this._buildBlock(43, 16, 8, 1);   // 8×1 long thin platform
+    this._buildBlock(49, 13, 4, 2);   // 4×2 thick block
+    this._buildBlock(56, 16, 1, 4);   // 1×4 pillar
+    this._buildBlock(55, 10, 3, 1);   // 3×1 elevated thin
+
+    // ── Zone 4: Finish — stepping stones ascending to door ──────────
+    this._buildBlock(62, 18, 2, 1);   // step 1
+    this._buildBlock(64, 16, 2, 1);   // step 2
+    this._buildBlock(66, 14, 2, 1);   // step 3
+    this._buildBlock(68, 12, 2, 1);   // step 4
+    this._buildBlock(70, 10, 5, 2);   // flag platform (5×2)
+  }
+
+  // ── BACK PALMS ──────────────────────────────────────────────────────────────
+  _buildBackPalms() {
+    const groundY = GROUND_ROW * TILE; // pixel y of ground surface
+    const palms = [
+      [  80, groundY, 'anim-bpl', 2.2],
+      [ 350, groundY, 'anim-bpr', 2.0],
+      [ 580, groundY, 'anim-bpR', 2.4],
+      [ 900, groundY, 'anim-bpl', 1.9],
+      [1200, groundY, 'anim-bpr', 2.2],
+      [1550, groundY, 'anim-bpR', 2.0],
+      [1950, groundY, 'anim-bpl', 2.3],
+      [2250, groundY, 'anim-bpr', 2.1],
+    ];
+    palms.forEach(([x, y, anim, scale]) => {
+      const initKey = anim.replace('anim-', '') + '-1';
+      this.add.sprite(x, y, initKey)
+        .setOrigin(0.5, 1)
+        .setScale(scale)
+        .setDepth(-5)
+        .play(anim);
+    });
+  }
+
+  // ── FRONT PALMS ─────────────────────────────────────────────────────────────
+  _buildFrontPalms() {
+    // [col, row] — row is the platform surface (palm anchored just above)
+    const positions = [
+      [5,  17],   // on 3×1 platform in Zone 1
+      [15, 16],   // on 4×1 platform in Zone 1
+      [25, 15],   // on 5×3 block in Zone 2
+      [51, 13],   // on 4×2 block in Zone 3
+      [73, 10],   // on door platform in Zone 4
+    ];
+    positions.forEach(([col, row]) => {
+      const x = col * TILE + TILE / 2;
+      const y = row * TILE;
+      this.add.sprite(x, y, 'fpt-1')
+        .setOrigin(0.5, 1)
+        .setScale(2.5)
+        .setDepth(1)
+        .play('anim-fpt');
+    });
+  }
+
+  // ── DECORATIONS ─────────────────────────────────────────────────────────────
+  _buildDecorations() {
+    // ── Door — level goal on end platform (col 73, row 10) ──────────
+    const doorX = 73 * TILE + TILE / 2;
+    const doorY = 10 * TILE;
+    this.add.sprite(doorX, doorY, 'door-close-1')
+      .setScale(1.0).setDepth(2).setOrigin(0.5, 1).play('anim-door-close');
+
+    // ── Chest — bottom-anchored on door platform surface ─────────────
+    this.add.image(71 * TILE + TILE / 2, 10 * TILE, 'chest')
+      .setScale(1.6).setDepth(2).setOrigin(0.5, 1);
+
+    // ── Spikes — bottom-anchored on ground surface ──────────────────
+    const groundY = GROUND_ROW * TILE;
+    [7, 35, 47].forEach(col => {
+      this.add.image(col * TILE + TILE / 2, groundY, 'spikes')
+        .setOrigin(0.5, 1).setDepth(2);
+    });
+
+    // ── Cannon — bottom-anchored on ground surface ────────────────
+    this.add.image(45 * TILE + TILE / 2, groundY, 'cannon-idle')
+      .setScale(1.5).setDepth(2).setOrigin(0.5, 1).setFlipX(true);
+
+    // ── Coins — spinning, floating above platforms ──────────────────
+    const coinPositions = [
+      // Above 3×1 platform in Zone 1 (row 17 → coins at row 15)
+      [3, 15], [4, 15], [5, 15],
+      // Above ground in Zone 2
+      [27, 19], [28, 19], [29, 19],
+      // Above long platform in Zone 3 (row 16 → coins at row 14)
+      [44, 14], [45, 14], [46, 14], [47, 14],
+      // On ascending steps in Zone 4
+      [63, 16], [65, 14], [67, 12], [69, 10],
+    ];
+    coinPositions.forEach(([col, row]) => {
+      this.add.sprite(col * TILE + TILE / 2, row * TILE + TILE / 2, 'coin-1')
+        .setScale(1.5).setDepth(5).play('anim-coin');
+    });
+
+    // ── Diamonds — on elevated platforms ─────────────────────────────
+    [[56, 8], [25, 13]].forEach(([col, row]) => {
+      this.add.sprite(col * TILE + TILE / 2, row * TILE + TILE / 2, 'diamond-1')
+        .setScale(1.5).setDepth(5).play('anim-diamond');
+    });
+
+    // ── Derila pillow — floating with tween ─────────────────────────
+    const derila = this.add.image(25 * TILE, 13 * TILE, 'derila')
+      .setScale(0.8).setDepth(5);
+    this.tweens.add({
+      targets: derila, y: derila.y - 12,
+      duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+    });
+  }
+
+  // ── HUD OVERLAY ─────────────────────────────────────────────────────────────
+  _buildHUD() {
+    // Controls + position text (fixed on screen)
+    this._hudText = this.add.text(8, 8,
+      'Arrow keys / WASD to scroll', {
+        fontSize: '13px',
+        color: '#ffffff',
+        backgroundColor: '#00000088',
+        padding: { x: 6, y: 4 },
+        fontFamily: 'monospace'
+      })
+      .setDepth(100)
+      .setScrollFactor(0);
+
+    // Legend
+    this.add.text(8, CAM_H - 42,
+      '9-slice terrain: TL=0  TC=1  TR=2 | ML=17  MC=18  MR=19 | BL=34  BC=35  BR=36', {
+        fontSize: '11px',
+        color: '#f5d76e',
+        backgroundColor: '#00000088',
+        padding: { x: 6, y: 4 },
+        fontFamily: 'monospace'
+      })
+      .setDepth(100)
+      .setScrollFactor(0);
+
+    this.add.text(8, CAM_H - 22,
+      'Shapes: 1×1=TC | N×1=TL+TC…+TR | 1×M=TC+MC…+BC | N×M=full 9-slice', {
+        fontSize: '11px',
+        color: '#a8d8ea',
+        backgroundColor: '#00000088',
+        padding: { x: 6, y: 4 },
+        fontFamily: 'monospace'
+      })
+      .setDepth(100)
+      .setScrollFactor(0);
+  }
+
+  // ── UPDATE — camera scrolling ───────────────────────────────────────────────
+  update() {
+    const cam = this.cameras.main;
+    const spd = SCROLL_SPEED;
+
+    if (this.cursors.left.isDown  || this._wasd.A.isDown) cam.scrollX -= spd;
+    if (this.cursors.right.isDown || this._wasd.D.isDown) cam.scrollX += spd;
+    if (this.cursors.up.isDown    || this._wasd.W.isDown) cam.scrollY -= spd;
+    if (this.cursors.down.isDown  || this._wasd.S.isDown) cam.scrollY += spd;
+
+    // Parallax background — tilePosition tracks camera at 0.2× rate
+    if (this._bgLayer) {
+      this._bgLayer.tilePositionX = cam.scrollX * 0.2;
+    }
+
+    // Auto-drift clouds — continuous movement independent of camera
+    if (this._bigClouds) {
+      this._bigClouds.tilePositionX -= 0.3;
+    }
+    if (this._smallClouds) {
+      this._smallClouds.forEach(c => {
+        c.sprite.x += c.speed;
+        if (c.sprite.x > CAM_W + 100) c.sprite.x = -100;
+      });
+    }
+
+    // Update HUD position display
+    const col = Math.floor(cam.scrollX / TILE);
+    const row = Math.floor(cam.scrollY / TILE);
+    this._hudText.setText(
+      `Arrow keys / WASD to scroll  |  Camera: col ${col}  row ${row}  (${Math.round(cam.scrollX)}, ${Math.round(cam.scrollY)})`
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+new Phaser.Game({
+  type: Phaser.AUTO,
+  width:  CAM_W,
+  height: CAM_H,
+  backgroundColor: '#0a0a14',
+  scene: [TerrainScene],
+  parent: 'game-container',
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH
+  }
+});
+</script>
+</body>
+</html>

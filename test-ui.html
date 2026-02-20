@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Wood &amp; Paper UI — Component Viewer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #12121f; color: #eee; font-family: monospace; padding: 20px; max-width: 1400px; }
+    canvas, img { image-rendering: pixelated; display: block; }
+    .section { margin: 28px 0 8px; }
+    .frame-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; align-items: flex-end; }
+    .frame { text-align: center; }
+    .frame span { font-size: 10px; color: #666; display: block; margin-top: 2px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0; align-items: flex-start; }
+    .item { text-align: center; }
+    .item p { font-size: 11px; color: #888; margin: 2px 0 0; }
+    h1 { color: #f5d76e; font-size: 20px; margin: 0 0 4px; }
+    h2 { color: #f5d76e; font-size: 14px; margin: 28px 0 4px; border-bottom: 1px solid #333; padding-bottom: 3px; }
+    h3 { color: #a8d8ea; font-size: 12px; margin: 12px 0 4px; }
+    .note { color: #666; font-size: 11px; margin: 2px 0 6px; }
+    .tag { background: #1e1e3a; border: 1px solid #444; border-radius: 3px;
+           padding: 1px 6px; font-size: 10px; color: #aaa; margin: 2px; display: inline-block; }
+    hr { border: none; border-top: 2px solid #2a2a4a; margin: 32px 0; }
+  </style>
+</head>
+<body>
+<h1>🎨 Wood &amp; Paper UI — Component Viewer</h1>
+<p class="note">
+  <span class="tag">9-slice panels: 0=TL 1=TC 2=TR 3=ML 4=MC 5=MR 6=BL 7=BC 8=BR</span>
+  <span class="tag">Buttons (5 frames): 0=TL 1=TR 2=center 3=BL 4=BR</span>
+  <span class="tag">Banner (3 frames): 0=left_cap 1=center_tile 2=right_cap</span>
+</p>
+
+<script>
+const UI = 'asset/Wood and Paper UI/Sprites/';
+
+// ── helpers ──────────────────────────────────────────────────
+function loadImg(src) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = src;
+  });
+}
+
+function frameGrid(folder, count, scale, startAt) {
+  startAt = startAt || 1;
+  const wrap = document.createElement('div');
+  wrap.className = 'frame-grid';
+  for (let i = startAt; i < startAt + count; i++) {
+    const d = document.createElement('div');
+    d.className = 'frame';
+    const img = new Image();
+    img.src = `${UI}${folder}/${i}.png`;
+    img.onerror = () => { img.style.outline = '1px solid #f00'; };
+    img.onload = () => {
+      img.style.width  = img.naturalWidth  * scale + 'px';
+      img.style.height = img.naturalHeight * scale + 'px';
+    };
+    d.appendChild(img);
+    d.appendChild(Object.assign(document.createElement('span'), { textContent: i }));
+    wrap.appendChild(d);
+  }
+  return wrap;
+}
+
+function addSection(title, note) {
+  const h = document.createElement('h2');
+  h.textContent = title;
+  document.body.appendChild(h);
+  if (note) {
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = note;
+    document.body.appendChild(p);
+  }
+}
+
+function addH3(text) {
+  const h = document.createElement('h3');
+  h.textContent = text;
+  document.body.appendChild(h);
+}
+
+function addRow(...items) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  items.forEach(item => item && row.appendChild(item));
+  document.body.appendChild(row);
+}
+
+function wrapItem(canvas, label) {
+  const d = document.createElement('div');
+  d.className = 'item';
+  d.appendChild(canvas);
+  if (label) d.appendChild(Object.assign(document.createElement('p'), { textContent: label }));
+  return d;
+}
+
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  return { c, ctx };
+}
+
+// ── Canvas2D tiling helpers ───────────────────────────────────
+function tileH(ctx, img, dx, dy, w, h, S) {
+  if (!img || w <= 0 || h <= 0) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(dx*S, dy*S, w*S, h*S); ctx.clip();
+  for (let x = 0; x < w; x += img.width) {
+    const sw = Math.min(img.width, w - x);
+    ctx.drawImage(img, 0, 0, sw, img.height, (dx+x)*S, dy*S, sw*S, h*S);
+  }
+  ctx.restore();
+}
+function tileV(ctx, img, dx, dy, w, h, S) {
+  if (!img || w <= 0 || h <= 0) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(dx*S, dy*S, w*S, h*S); ctx.clip();
+  for (let y = 0; y < h; y += img.height) {
+    const sh = Math.min(img.height, h - y);
+    ctx.drawImage(img, 0, 0, img.width, sh, dx*S, (dy+y)*S, w*S, sh*S);
+  }
+  ctx.restore();
+}
+function tileXY(ctx, img, dx, dy, w, h, S) {
+  if (!img || w <= 0 || h <= 0) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(dx*S, dy*S, w*S, h*S); ctx.clip();
+  for (let x = 0; x < w; x += img.width)
+    for (let y = 0; y < h; y += img.height) {
+      const sw = Math.min(img.width, w-x), sh = Math.min(img.height, h-y);
+      ctx.drawImage(img, 0,0, sw, sh, (dx+x)*S, (dy+y)*S, sw*S, sh*S);
+    }
+  ctx.restore();
+}
+
+// ── 9-slice panel ────────────────────────────────────────────
+async function panel9(folder, PW, PH, S, label) {
+  const CS = 32;
+  const IW = PW-CS*2, IH = PH-CS*2;
+  const { c, ctx } = makeCanvas(PW*S, PH*S);
+  c.style.width = PW + 'px'; c.style.height = PH + 'px';
+  const imgs = await Promise.all(
+    Array.from({length:9}, (_,i) => loadImg(`${UI}${folder}/${i+1}.png`))
+  );
+  const [tl,tc,tr,ml,mc,mr,bl,bc,br] = imgs;
+  const dr = (img, dx, dy, dw, dh) =>
+    img && ctx.drawImage(img, 0,0, img.width,img.height, dx*S,dy*S, dw*S,dh*S);
+  dr(tl, 0,      0,      CS, CS);
+  dr(tr, CS+IW,  0,      CS, CS);
+  dr(bl, 0,      CS+IH,  CS, CS);
+  dr(br, CS+IW,  CS+IH,  CS, CS);
+  tileH(ctx, tc, CS, 0,     IW, CS, S);
+  tileH(ctx, bc, CS, CS+IH, IW, CS, S);
+  tileV(ctx, ml, 0,     CS, CS, IH, S);
+  tileV(ctx, mr, CS+IW, CS, CS, IH, S);
+  tileXY(ctx, mc, CS, CS, IW, IH, S);
+  return wrapItem(c, label || `${PW}×${PH}`);
+}
+
+// ── Button assembly: frame 8 = corner, frame 9 = edge ─────────
+// TL=f8, TR=f8 mirrorX, BL=f8 rot90ccw, BR=f8 rot180
+// top=f9, bottom=f9 rot180, left=f9 rot90ccw, right=f9 rot90cw
+async function button(folder, PW, PH, S, label) {
+  const FW = 14, VS = 2, TW = FW * VS; // 14px tiles rendered at 28px
+  const [img8, img9, img5] = await Promise.all([
+    loadImg(`${UI}${folder}/8.png`),
+    loadImg(`${UI}${folder}/9.png`),
+    loadImg(`${UI}${folder}/5.png`),
+  ]);
+
+  function makeTile(src, tr) {
+    const { c, ctx } = makeCanvas(TW, TW);
+    if (!src) return c;
+    ctx.save();
+    if (tr === 'mirrorX')  { ctx.translate(TW,0);  ctx.scale(-1,1); }
+    if (tr === 'rot90ccw') { ctx.translate(0,TW);  ctx.rotate(-Math.PI/2); }
+    if (tr === 'rot90cw')  { ctx.translate(TW,0);  ctx.rotate(Math.PI/2); }
+    if (tr === 'rot180')   { ctx.translate(TW,TW); ctx.rotate(Math.PI); }
+    ctx.drawImage(src, 0,0,FW,FW, 0,0,TW,TW);
+    ctx.restore();
+    return c;
+  }
+
+  const tl  = makeTile(img8);
+  const tr  = makeTile(img8, 'mirrorX');
+  const bl  = makeTile(img8, 'rot90ccw');
+  const br  = makeTile(img8, 'rot180');
+  const top = makeTile(img9);
+  const bot = makeTile(img9, 'rot180');
+  const lft = makeTile(img9, 'rot90ccw');
+  const rgt = makeTile(img9, 'rot90cw');
+  const ctr = makeTile(img5);
+
+  const vc = Math.min(Math.floor(PW/2), Math.floor(PH/2), TW);
+  const iw = Math.max(0, PW - vc*2);
+  const ih = Math.max(0, PH - vc*2);
+  const { c, ctx } = makeCanvas(PW*S, PH*S);
+  c.style.width = PW + 'px'; c.style.height = PH + 'px';
+
+  const v = vc * S;
+  // Corners
+  ctx.drawImage(tl, 0,0,TW,TW, 0,       0,       v,v);
+  ctx.drawImage(tr, 0,0,TW,TW, PW*S-v,  0,       v,v);
+  ctx.drawImage(bl, 0,0,TW,TW, 0,       PH*S-v,  v,v);
+  ctx.drawImage(br, 0,0,TW,TW, PW*S-v,  PH*S-v,  v,v);
+  // Top / bottom edges
+  if (iw > 0) {
+    tileH(ctx, top, vc, 0,     iw, vc, S);
+    tileH(ctx, bot, vc, PH-vc, iw, vc, S);
+  }
+  // Left / right edges + center (for taller buttons)
+  if (ih > 0) {
+    tileV(ctx, lft, 0,     vc, vc, ih, S);
+    tileV(ctx, rgt, PW-vc, vc, vc, ih, S);
+    if (iw > 0) tileXY(ctx, ctr, vc, vc, iw, ih, S);
+  }
+
+  return wrapItem(c, label || `${PW}×${PH}`);
+}
+
+// ── Small Banner ─────────────────────────────────────────────
+async function banner(minBW, S, text) {
+  const capW = 32, capH = 48;
+  const fontSize = 16; // CSS px — fills banner height (~62% of 48px capH)
+
+  // Auto-size: expand banner so text fits with 30px padding each side
+  let BW = minBW;
+  if (text) {
+    const tmp = document.createElement('canvas').getContext('2d');
+    tmp.font = `bold ${fontSize}px Georgia,serif`;
+    const textW = Math.ceil(tmp.measureText(text).width);
+    BW = Math.max(BW, textW + capW * 2 + 60);
+  }
+
+  const midW = Math.max(0, BW - capW*2);
+  const [left, mid, right] = await Promise.all([1,13,2].map(i => loadImg(`${UI}Small Banner/${i}.png`)));
+  const { c, ctx } = makeCanvas(BW*S, capH*S);
+  if (left)  ctx.drawImage(left,  0,0,32,32, 0,              0, capW*S,capH*S);
+  tileH(ctx, mid, capW, 0, midW, capH, S);
+  if (right) ctx.drawImage(right, 0,0,32,32, (capW+midW)*S,  0, capW*S,capH*S);
+  if (text) {
+    ctx.font = `bold ${fontSize*S}px Georgia,serif`;
+    ctx.fillStyle = '#F8E890'; ctx.strokeStyle = '#1C2E1A';
+    ctx.lineWidth = 2*S; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeText(text, BW/2*S, capH/2*S);
+    ctx.fillText(text,   BW/2*S, capH/2*S);
+  }
+  return wrapItem(c, `${text || ''} (${BW}px)`);
+}
+
+// ════════════════════════════════════════════════════════════
+// RENDER SECTIONS (async so we can await canvas draws)
+// ════════════════════════════════════════════════════════════
+(async () => {
+
+// ── 9-SLICE PANELS ──────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('9-Slice Panels  (32×32 corner tiles)',
+  'Phaser keys: ui-green-board · ui-orange-paper · ui-yellow-board · ui-yellow-paper');
+
+addH3('Green Board — frames 1–9');
+document.body.appendChild(frameGrid('Green Board', 9, 4));
+addH3('Orange Paper — frames 1–9');
+document.body.appendChild(frameGrid('Orange Paper', 9, 4));
+addH3('Yellow Board — frames 1–9');
+document.body.appendChild(frameGrid('Yellow Board', 9, 4));
+addH3('Yellow Paper — frames 1–9');
+document.body.appendChild(frameGrid('Yellow Paper', 9, 4));
+
+addH3('State variants (frames 10–16 — hover/active/disabled)');
+addRow(
+  ...['Green Board','Orange Paper','Yellow Board','Yellow Paper'].map(f => {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.appendChild(Object.assign(document.createElement('p'), {textContent: f}));
+    d.appendChild(frameGrid(f, 7, 3, 10));
+    return d;
+  })
+);
+
+addH3('Composed panels');
+addRow(
+  await panel9('Green Board',  300, 200, 2, 'Green Board 300×200'),
+  await panel9('Green Board',  500, 48,  2, 'Green Board 500×48 (bar)'),
+  await panel9('Orange Paper', 360, 240, 2, 'Orange Paper 360×240'),
+  await panel9('Yellow Board', 260, 180, 2, 'Yellow Board 260×180'),
+  await panel9('Yellow Paper', 300, 200, 2, 'Yellow Paper 300×200'),
+);
+
+// ── BUTTONS ─────────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Buttons  (14×14 tiles — corners + H-tiled center, no vertical seams)',
+  'Phaser keys: ui-green-btn · ui-yellow-btn  |  Frame layout: 0=TL 1=TR 2=center 3=BL 4=BR');
+
+addH3('Green Button — frames 1–9');
+document.body.appendChild(frameGrid('Green Button', 9, 6));
+addH3('Yellow Button — frames 1–9');
+document.body.appendChild(frameGrid('Yellow Button', 9, 6));
+
+addH3('Green Button — large (frames 8+9+5, extensible to any size)');
+addRow(
+  await button('Green Button', 320, 64, 2, 'PLAY  320×64'),
+  await button('Green Button', 240, 56, 2, 'START  240×56'),
+  await button('Green Button', 220, 44, 3, 'PLAY  220×44'),
+  await button('Green Button', 160, 36, 3, 'RESUME  160×36'),
+  await button('Green Button', 120, 32, 3, 'OK  120×32'),
+  await button('Green Button',  90, 28, 3, 'GO  90×28'),
+);
+addH3('Yellow Button — large (frames 8+9+5, extensible to any size)');
+addRow(
+  await button('Yellow Button', 280, 60, 2, 'HOW TO PLAY  280×60'),
+  await button('Yellow Button', 200, 48, 2, 'SETTINGS  200×48'),
+  await button('Yellow Button', 160, 36, 3, 'SETTINGS  160×36'),
+  await button('Yellow Button', 120, 32, 3, 'BACK  120×32'),
+  await button('Yellow Button', 100, 28, 3, 'EXIT  100×28'),
+  await button('Yellow Button',  80, 28, 3, 'NO  80×28'),
+);
+
+// ── BANNERS ─────────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Small Banner  (3-slice: frame 1=left cap, 13=center tile, 2=right cap)',
+  'Phaser key: ui-banner  |  Frame indices: 0=left_cap 1=center_tile 2=right_cap');
+
+addH3('All 13 frames');
+document.body.appendChild(frameGrid('Small Banner', 13, 4));
+
+addH3('Assembled banners');
+addRow(
+  await banner(460, 3, 'CAPTAIN ORBIO ADVENTURE'),
+  await banner(240, 3, 'GAME OVER'),
+  await banner(200, 3, 'PAUSED'),
+  await banner(180, 3, 'SETTINGS'),
+  await banner(160, 3, 'LEVEL 1'),
+  await banner(140, 3, 'VICTORY!'),
+);
+
+addH3('Big Banner — all 33 frames');
+document.body.appendChild(frameGrid('Big Banner', 33, 4));
+
+// ── LIFE BARS ────────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Life Bars');
+
+addH3('Small Bars (11×7px) — used in HUD  |  Phaser key: health');
+document.body.appendChild(frameGrid('Life Bars/Small Bars', 5, 8));
+
+addH3('Medium Bars (32×32px)');
+document.body.appendChild(frameGrid('Life Bars/Medium Bars', 5, 4));
+
+addH3('Big Bars (32×32px)');
+document.body.appendChild(frameGrid('Life Bars/Big Bars', 4, 4));
+
+addH3('Colors (32×2px thin strips — bar fill color variants)');
+document.body.appendChild(frameGrid('Life Bars/Colors', 4, 8));
+
+// ── INVENTORY ────────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Inventory  (38×42px per tile — inventory slot 9-slice)');
+document.body.appendChild(frameGrid('Inventory', 16, 4));
+
+// ── SLIDERS ──────────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Sliders  (12×12px — track + handle for volume/settings sliders)');
+document.body.appendChild(frameGrid('Sliders', 10, 6));
+
+// ── MOBILE BUTTONS ───────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Mobile Buttons');
+
+addH3('Action buttons (28×28px) — D-pad / attack / jump');
+document.body.appendChild(frameGrid('Mobile Buttons/Mobile Buttons', 8, 5));
+
+addH3('Cooldown overlays (26×24px)');
+document.body.appendChild(frameGrid('Mobile Buttons/Mobile Buttons Cooldown', 12, 5));
+
+// ── TEXT & ICONS ─────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Text & Icons');
+
+addH3('Big Text — 36 glyphs (10×11px)  — digits + letters for large scores/titles');
+document.body.appendChild(frameGrid('Big Text', 36, 5));
+
+addH3('Small Text — 52 glyphs (5×6px) — full alphabet + digits');
+document.body.appendChild(frameGrid('Small Text/Small Text', 52, 7));
+
+addH3('Small Icons — 25 icons (8×6px) — hearts, stars, arrows, etc.');
+document.body.appendChild(frameGrid('Small Text/Small Icons', 25, 7));
+
+addH3('White Bar — 4 frames (8×8px)');
+document.body.appendChild(frameGrid('Small Text/White Bar', 4, 7));
+
+// ── PREFABS ──────────────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Prefabs  (64–128px pre-assembled UI panels/portraits)');
+const prefabRow = document.createElement('div');
+prefabRow.className = 'row';
+for (let i = 1; i <= 12; i++) {
+  const img = await loadImg(`${UI}Prefabs/${i}.png`);
+  if (!img) continue;
+  const el = new Image();
+  el.src = `${UI}Prefabs/${i}.png`;
+  el.style.maxWidth = '192px';
+  prefabRow.appendChild(wrapItem(el, `${i}.png  ${img.width}×${img.height}`));
+}
+document.body.appendChild(prefabRow);
+
+// ── ASSEMBLED MOCKUP ─────────────────────────────────────────
+document.body.appendChild(document.createElement('hr'));
+addSection('Assembled Screen Mockup — GAME OVER (800×480)');
+
+const { c: mc, ctx: mctx } = makeCanvas(800, 480);
+mc.style.border = '1px solid #444';
+document.body.appendChild(mc);
+
+// Load all needed images
+const opImgs = await Promise.all(Array.from({length:9}, (_,i) => loadImg(`${UI}Orange Paper/${i+1}.png`)));
+const gbImgs = await Promise.all(Array.from({length:9}, (_,i) => loadImg(`${UI}Green Board/${i+1}.png`)));
+const FW_BTN = 14, VS_BTN = 2, TW_BTN = FW_BTN * VS_BTN; // 28px scaled tiles
+const [ybT8, ybT9, ybT5] = await Promise.all([
+  loadImg(`${UI}Yellow Button/8.png`),
+  loadImg(`${UI}Yellow Button/9.png`),
+  loadImg(`${UI}Yellow Button/5.png`),
+]);
+function makeYbTile(src, tr) {
+  const { c, ctx } = makeCanvas(TW_BTN, TW_BTN);
+  ctx.imageSmoothingEnabled = false;
+  if (!src) return c;
+  ctx.save();
+  if (tr === 'mirrorX')  { ctx.translate(TW_BTN,0);        ctx.scale(-1,1); }
+  if (tr === 'rot90ccw') { ctx.translate(0,TW_BTN);        ctx.rotate(-Math.PI/2); }
+  if (tr === 'rot90cw')  { ctx.translate(TW_BTN,0);        ctx.rotate(Math.PI/2); }
+  if (tr === 'rot180')   { ctx.translate(TW_BTN,TW_BTN);   ctx.rotate(Math.PI); }
+  ctx.drawImage(src, 0,0,FW_BTN,FW_BTN, 0,0,TW_BTN,TW_BTN);
+  ctx.restore();
+  return c;
+}
+const ybTL  = makeYbTile(ybT8);
+const ybTR  = makeYbTile(ybT8, 'mirrorX');
+const ybBL  = makeYbTile(ybT8, 'rot90ccw');
+const ybBR  = makeYbTile(ybT8, 'rot180');
+const ybTop = makeYbTile(ybT9);
+const ybBot = makeYbTile(ybT9, 'rot180');
+const ybLft = makeYbTile(ybT9, 'rot90ccw');
+const ybRgt = makeYbTile(ybT9, 'rot90cw');
+const ybCtr = makeYbTile(ybT5);
+
+const [bLeft, bMid, bRight] = await Promise.all([1,13,2].map(i => loadImg(`${UI}Small Banner/${i}.png`)));
+
+function draw9ctx(ctx, imgs, PX, PY, PW, PH, CS, S) {
+  S = S || 1;
+  const IW = PW-CS*2, IH = PH-CS*2;
+  const dr = (img, dx, dy, dw, dh) =>
+    img && ctx.drawImage(img, 0,0, img.width,img.height, dx,dy, dw,dh);
+  dr(imgs[0], PX,         PY,         CS, CS);
+  dr(imgs[2], PX+IW+CS,   PY,         CS, CS);
+  dr(imgs[6], PX,         PY+IH+CS,   CS, CS);
+  dr(imgs[8], PX+IW+CS,   PY+IH+CS,   CS, CS);
+  tileH(ctx, imgs[1], PX+CS,    PY,         IW, CS, S);
+  tileH(ctx, imgs[7], PX+CS,    PY+CS+IH,   IW, CS, S);
+  tileV(ctx, imgs[3], PX,       PY+CS,      CS, IH, S);
+  tileV(ctx, imgs[5], PX+IW+CS, PY+CS,      CS, IH, S);
+  tileXY(ctx, imgs[4], PX+CS, PY+CS, IW, IH, S);
+}
+
+function drawBtnCtx(ctx, PX, PY, PW, PH, text) {
+  const vc = Math.min(Math.floor(PW/2), Math.floor(PH/2), TW_BTN);
+  const iw = Math.max(0, PW - vc*2);
+  const ih = Math.max(0, PH - vc*2);
+  ctx.drawImage(ybTL, 0,0,TW_BTN,TW_BTN, PX,       PY,       vc, vc);
+  ctx.drawImage(ybTR, 0,0,TW_BTN,TW_BTN, PX+PW-vc, PY,       vc, vc);
+  ctx.drawImage(ybBL, 0,0,TW_BTN,TW_BTN, PX,       PY+PH-vc, vc, vc);
+  ctx.drawImage(ybBR, 0,0,TW_BTN,TW_BTN, PX+PW-vc, PY+PH-vc, vc, vc);
+  if (iw > 0) {
+    tileH(ctx, ybTop, PX+vc, PY,       iw, vc, 1);
+    tileH(ctx, ybBot, PX+vc, PY+PH-vc, iw, vc, 1);
+  }
+  if (ih > 0) {
+    tileV(ctx, ybLft, PX,       PY+vc, vc, ih, 1);
+    tileV(ctx, ybRgt, PX+PW-vc, PY+vc, vc, ih, 1);
+    if (iw > 0) tileXY(ctx, ybCtr, PX+vc, PY+vc, iw, ih, 1);
+  }
+  if (text) {
+    mctx.font = 'bold 13px "Arial Black",Arial';
+    mctx.fillStyle = '#F0DCA0'; mctx.strokeStyle = '#1C2E1A';
+    mctx.lineWidth = 3; mctx.textAlign = 'center'; mctx.textBaseline = 'middle';
+    mctx.strokeText(text, PX+PW/2, PY+PH/2);
+    mctx.fillText(text,   PX+PW/2, PY+PH/2);
+  }
+}
+
+// Background
+const grad = mctx.createLinearGradient(0,0,0,480);
+grad.addColorStop(0, '#1a1040'); grad.addColorStop(1, '#0d0820');
+mctx.fillStyle = grad; mctx.fillRect(0,0,800,480);
+
+// Outer green board frame
+draw9ctx(mctx, gbImgs, 10, 10, 780, 460, 32);
+
+// Inner orange paper panel
+const PX=120, PY=80, PW=560, PH=320;
+draw9ctx(mctx, opImgs, PX, PY, PW, PH, 32);
+
+// Banner over panel top edge
+const BW=200, BH=32, BX=PX+(PW-BW)/2, BY=PY-14;
+if (bLeft)  mctx.drawImage(bLeft,  0,0,32,32, BX,          BY, 32, BH);
+tileH(mctx, bMid, BX+32, BY, BW-64, BH, 1);
+if (bRight) mctx.drawImage(bRight, 0,0,32,32, BX+BW-32,    BY, 32, BH);
+mctx.font='bold 14px Georgia,serif'; mctx.fillStyle='#F8E890'; mctx.strokeStyle='#1C2E1A';
+mctx.lineWidth=3; mctx.textAlign='center'; mctx.textBaseline='middle';
+mctx.strokeText('GAME OVER', BX+BW/2, BY+BH/2);
+mctx.fillText('GAME OVER',   BX+BW/2, BY+BH/2);
+
+// Score text
+mctx.textAlign='center'; mctx.textBaseline='middle';
+mctx.font='bold 22px Georgia,serif'; mctx.fillStyle='#3D2000';
+mctx.fillText('Score: 1,250', 400, 195);
+mctx.font='15px Georgia,serif'; mctx.fillStyle='#5C3A00';
+mctx.fillText('Coins: 12  ·  Diamonds: 3', 400, 228);
+mctx.font='bold 16px Georgia,serif'; mctx.fillStyle='#C8860A';
+mctx.fillText('★ ★ ★  ADVENTURER', 400, 262);
+
+// Buttons
+const BTW=160, BTH=40;
+const BTX = PX+(PW-BTW)/2;
+drawBtnCtx(mctx, BTX, PY+PH-115, BTW, BTH, 'PLAY AGAIN');
+drawBtnCtx(mctx, BTX, PY+PH-64,  BTW, BTH, 'MAIN MENU');
+
+})();
+</script>
+</body>
+</html>

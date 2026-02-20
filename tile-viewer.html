@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head><style>
+body { background: #333; margin: 0; padding: 10px; }
+canvas { display: block; margin: 10px auto; image-rendering: pixelated; }
+h2 { color: white; text-align: center; margin: 8px 0 4px; font-size: 16px; }
+.nav { text-align: center; margin: 10px; }
+.nav button { background: #f5d76e; border: none; padding: 8px 20px; margin: 0 5px;
+  cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 4px; }
+.nav button.active { background: #e67e22; color: white; }
+#c1, #c2 { display: none; }
+</style></head>
+<body>
+<div class="nav">
+  <button id="btn1" class="active" onclick="show(1)">Palm Tree Island (17×5)</button>
+  <button id="btn2" onclick="show(2)">Pirate Ship (19×13)</button>
+</div>
+<h2 id="title">Palm Tree Island Terrain (17×5 = 85 tiles)</h2>
+<canvas id="c1"></canvas>
+<canvas id="c2"></canvas>
+<script>
+function show(n) {
+  document.getElementById('c1').style.display = n===1 ? 'block' : 'none';
+  document.getElementById('c2').style.display = n===2 ? 'block' : 'none';
+  document.getElementById('btn1').className = n===1 ? 'active' : '';
+  document.getElementById('btn2').className = n===2 ? 'active' : '';
+  document.getElementById('title').textContent = n===1
+    ? 'Palm Tree Island Terrain (17×5 = 85 tiles)'
+    : 'Pirate Ship Terrain (19×13 = 247 tiles)';
+}
+function drawTileset(canvasId, imgSrc, tileW, tileH) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    const cols = Math.floor(img.width / tileW);
+    const rows = Math.floor(img.height / tileH);
+    const scale = 2;
+    canvas.width = cols * (tileW * scale + 1) + 1;
+    canvas.height = rows * (tileH * scale + 1) + 1;
+    ctx.fillStyle = '#555';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const sx = col * tileW, sy = row * tileH;
+        const dx = col * (tileW * scale + 1) + 1;
+        const dy = row * (tileH * scale + 1) + 1;
+        ctx.drawImage(img, sx, sy, tileW, tileH, dx, dy, tileW*scale, tileH*scale);
+        ctx.strokeStyle = 'rgba(255,255,0,0.4)';
+        ctx.strokeRect(dx, dy, tileW*scale, tileH*scale);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(row*cols+col, dx+2, dy+12);
+      }
+    }
+    if (canvasId === 'c1') canvas.style.display = 'block';
+  };
+  img.src = imgSrc;
+}
+drawTileset('c1', 'asset/Palm Tree Island/Sprites/Terrain/Terrain (32x32).png', 32, 32);
+drawTileset('c2', 'asset/Pirate Ship/Sprites/Tilesets/Terrain and Back Wall (32x32).png', 32, 32);
+</script>
+</body>
+</html>

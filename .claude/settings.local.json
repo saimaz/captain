@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__browser__browser_navigate",
+      "mcp__browser__browser_screenshot",
+      "mcp__browser__browser_wait",
+      "mcp__browser__browser_get_console_logs",
+      "mcp__browser__browser_snapshot",
+      "mcp__browser__browser_press_key",
+      "WebSearch",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Skill(update-claudemd)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(node -e:*)",
+      "Bash(sips:*)",
+      "mcp__browser__browser_click",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(ls:*)",
+      "mcp__browsermcp__browser_navigate",
+      "mcp__browsermcp__browser_screenshot"
+    ]
+  }
+}
