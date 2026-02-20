@@ -32,6 +32,7 @@ class GameScene extends Phaser.Scene {
         const LD        = this._levelData;
 
         this.physics.world.setBounds(0, 0, LD.worldW, LD.worldH);
+        this.physics.world.gravity.y = GAME.GRAVITY;
         this.cameras.main.setBounds(0, 0, LD.worldW, LD.worldH);
 
         this.createBackground();
@@ -502,6 +503,10 @@ class GameScene extends Phaser.Scene {
 
         this.physics.add.overlap(this.allCannonballs, this.player.sprite, (ball) => {
             if (ball.active) { ball.destroy(); this.player.takeDamage(); }
+        });
+
+        this.physics.add.collider(this.allCannonballs, this.platforms, (ball) => {
+            if (ball && ball.active) ball.destroy();
         });
 
         this.physics.add.overlap(this.player.sprite, this.coins, (_, coin) => {

@@ -27,7 +27,7 @@ class Enemy {
         this._isInAir      = false;
 
         this.sprite = scene.physics.add.sprite(x, y, type + '-idle-1');
-        this.sprite.setSize(40, 28).setOffset(16, 2);
+        this.sprite.setSize(40, 24).setOffset(16, 4);
         this.sprite.setGravityY(400); // world gravity (900) + 400 extra = 1300 total
         this.sprite.setCollideWorldBounds(false);
         this.sprite.setDepth(9);
@@ -47,6 +47,12 @@ class Enemy {
         if (this._wasOnGround && !onGround && !this._isAttacking) {
             this._dir *= -1;
             sp.x += this._dir * 8;
+        }
+
+        // Wall detection: blocked on side -> reverse direction
+        if (!this._isAttacking) {
+            if (body.blocked.left)  { this._dir =  1; sp.x += 2; }
+            if (body.blocked.right) { this._dir = -1; sp.x -= 2; }
         }
 
         // Pink Star: track air state and play jump/fall/ground animations
